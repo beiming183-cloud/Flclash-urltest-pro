@@ -240,10 +240,10 @@ func UpdateProxies(newProxies map[string]C.Proxy, newProviders map[string]P.Prox
 	providers = newProviders
 	invalidateAllProxies()
 	configMux.Unlock()
-	if stabilityRunning {
+	if stabilityRunning && stabilityOnline {
 		for _, p := range newProxies {
 			if g, ok := p.Adapter().(stabilityGroup); ok {
-				g.Start()
+				g.NetworkChanged(stabilityNetworkKey, stabilityOnline)
 			}
 		}
 	}

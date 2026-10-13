@@ -4,11 +4,13 @@ import "sync"
 
 var stabilityLifecycle sync.Mutex
 var stabilityRunning bool
+var stabilityOnline = true
+var stabilityNetworkKey = "startup"
 
 type stabilityGroup interface {
 	Start()
 	Stop()
-	NetworkChanged()
+	NetworkChanged(string, bool)
 }
 
 func SetStabilityRunning(running bool) {
@@ -17,7 +19,7 @@ func SetStabilityRunning(running bool) {
 	stabilityRunning = running
 	for _, p := range AllProxies() {
 		if g, ok := p.Adapter().(stabilityGroup); ok {
-			if running {
+			if running && stabilityOnline {
 				g.Start()
 			} else {
 				g.Stop()
@@ -26,15 +28,17 @@ func SetStabilityRunning(running bool) {
 	}
 }
 
-func StabilityNetworkChanged() {
+func StabilityNetworkChanged(key string, online bool) {
 	stabilityLifecycle.Lock()
 	defer stabilityLifecycle.Unlock()
+	stabilityNetworkKey = key
+	stabilityOnline = online
 	if !stabilityRunning {
 		return
 	}
 	for _, p := range AllProxies() {
 		if g, ok := p.Adapter().(stabilityGroup); ok {
-			g.NetworkChanged()
+			g.NetworkChanged(key, online)
 		}
 	}
 }

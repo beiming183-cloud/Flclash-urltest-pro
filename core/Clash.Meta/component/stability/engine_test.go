@@ -1,6 +1,8 @@
 package stability
 
 import (
+	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +39,40 @@ func TestEligibilityStickyPrimaryAndExpiry(t *testing.T) {
 	now = now.Add(31 * time.Second)
 	if len(e.Attempts()) != 0 {
 		t.Fatal("stale standby accepted")
+	}
+}
+
+func TestNetworkLRUIsolationAndReverification(t *testing.T) {
+	e, _ := New([]Candidate{{"a", "r1", "airport"}}, nil)
+	first := fmt.Sprintf("%024x", 1)
+	second := fmt.Sprintf("%024x", 2)
+	e.SwitchNetwork(first)
+	e.Reserve(false)
+	epoch := e.Snapshot().Epoch
+	e.Record("a", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Millisecond}, true)
+	e.SwitchNetwork(second)
+	if e.Snapshot().Nodes[0].Count != 0 {
+		t.Fatal("statistics crossed networks")
+	}
+	e.SwitchNetwork(first)
+	if e.Snapshot().Nodes[0].Count != 1 || len(e.Attempts()) != 0 {
+		t.Fatal("statistics not restored or eligibility restored")
+	}
+	if e.Snapshot().BudgetUsed != 1 {
+		t.Fatal("network switch reset hourly budget")
+	}
+	for i := 3; i < 20; i++ {
+		e.SwitchNetwork(fmt.Sprintf("%024x", i))
+	}
+	state := e.Statistics()
+	data, _ := json.Marshal(state)
+	if len(state.Networks) > 8 || len(data) > ExportLimit {
+		t.Fatal("network statistics exceed bounds")
+	}
+	restored, _ := New([]Candidate{{"a", "r1", "airport"}}, nil)
+	restored.Restore(state)
+	if len(restored.Attempts()) != 0 {
+		t.Fatal("restart restored qualification")
 	}
 }
 

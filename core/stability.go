@@ -12,11 +12,13 @@ import (
 )
 
 type StabilityParams struct {
-	Group     string `json:"group"`
-	Node      string `json:"node"`
-	Paused    bool   `json:"paused"`
-	PowerSave bool   `json:"powerSave"`
-	Debug     *bool  `json:"debug"`
+	NetworkKey string `json:"networkKey"`
+	Online     bool   `json:"online"`
+	Group      string `json:"group"`
+	Node       string `json:"node"`
+	Paused     bool   `json:"paused"`
+	PowerSave  bool   `json:"powerSave"`
+	Debug      *bool  `json:"debug"`
 }
 
 func init() {
@@ -66,7 +68,7 @@ func probeStabilityCandidate(params *StabilityParams) (stability.Sample, error) 
 	if err != nil {
 		return stability.Sample{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return g.Probe(ctx, params.Node, true, false)
 }

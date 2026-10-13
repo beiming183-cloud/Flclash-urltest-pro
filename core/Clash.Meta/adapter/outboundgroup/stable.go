@@ -58,6 +58,7 @@ type Stable struct {
 	ctx        context.Context
 	wg         sync.WaitGroup
 	slots      chan struct{}
+	probing    map[string]bool
 	transition sync.Mutex
 	probe      func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
 }
@@ -80,7 +81,7 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	if len(endpoints) == 0 {
 		return nil, errors.New("stable-failover requires residential-endpoints")
 	}
-	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 2), probe: probeStable}
+	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 2), probing: map[string]bool{}, probe: probeStable}
 	candidates := []stability.Candidate{}
 	account := ""
 	for _, name := range option.Proxies {
@@ -204,16 +205,19 @@ func (s *Stable) Stop() {
 	if cancel != nil {
 		cancel()
 		s.wg.Wait()
-		_ = s.journal.Store(s.groupID, s.engine.Snapshot())
+		_ = s.journal.Store(s.groupID, s.engine.Statistics())
 		s.engine.Invalidate()
 		s.log("network_changed", "stopped", "", false, 0)
 	}
 }
 func (s *Stable) Close() error { s.Stop(); return nil }
 
-func (s *Stable) NetworkChanged() {
+func (s *Stable) NetworkChanged(key string, online bool) {
 	s.Stop()
-	s.Start()
+	s.engine.SwitchNetwork(s.journal.ID("network:" + key))
+	if online {
+		s.Start()
+	}
 	s.log("network_changed", "network_changed", "", false, 0)
 	OnStableRouteChange()
 }
@@ -289,19 +293,28 @@ func (s *Stable) schedule(ctx context.Context) {
 }
 
 func (s *Stable) Probe(ctx context.Context, id string, verify, elect bool) (stability.Sample, error) {
+	return s.probeCandidate(ctx, id, verify, elect, false)
+}
+
+func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, fault bool) (stability.Sample, error) {
 	p := s.byID[id]
 	if p == nil {
 		return stability.Sample{}, errors.New("unknown stability candidate")
 	}
 	s.mu.Lock()
+	if s.probing[id] {
+		s.mu.Unlock()
+		return stability.Sample{}, errors.New("candidate probe in progress")
+	}
 	if s.cancel == nil {
 		s.mu.Unlock()
 		return stability.Sample{}, errors.New("stability service stopped")
 	}
 	owner := s.ctx
+	s.probing[id] = true
 	s.wg.Add(1)
 	s.mu.Unlock()
-	defer s.wg.Done()
+	defer func() { s.mu.Lock(); delete(s.probing, id); s.mu.Unlock(); s.wg.Done() }()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(owner, cancel)
@@ -314,14 +327,23 @@ func (s *Stable) Probe(ctx context.Context, id string, verify, elect bool) (stab
 	}
 	state := s.engine.Snapshot()
 	timeout := 2500 * time.Millisecond
+	for _, node := range state.Nodes {
+		if node.ID == id && node.Failures > 0 {
+			timeout = 5 * time.Second
+		}
+	}
 	if verify {
-		timeout = 10 * time.Second
+		timeout = 15 * time.Second
 	}
 	ctx, cancelProbe := context.WithTimeout(ctx, timeout)
 	defer cancelProbe()
-	sample := s.probe(ctx, p, s.expected, verify, state.Epoch, func() bool { return s.engine.Reserve(false) })
+	sample := s.probe(ctx, p, s.expected, verify, state.Epoch, func() bool { return s.engine.Reserve(fault) })
 	if owner.Err() != nil || sample.Error == "cancelled" {
 		return sample, context.Canceled
+	}
+	if sample.Error == "budget_exhausted" {
+		s.log("budget_exhausted", "budget_exhausted", id, false, 0)
+		return sample, errors.New("probe budget exhausted")
 	}
 	s.engine.Record(id, sample, elect)
 	if len(sample.TLSInfo) > 0 {
@@ -352,7 +374,21 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 	state := s.engine.Snapshot()
 	attempts := s.engine.Attempts()
 	if len(attempts) == 0 {
-		return nil, errors.New("no validated residential chain")
+		checked := 0
+		for _, node := range state.Nodes {
+			if node.Streak < 3 || node.Quarantined || time.Now().Before(node.CoolingUntil) {
+				continue
+			}
+			_, _ = s.probeCandidate(ctx, node.ID, true, true, true)
+			checked++
+			if len(s.engine.Attempts()) > 0 || checked >= 3 {
+				break
+			}
+		}
+		attempts = s.engine.Attempts()
+		if len(attempts) == 0 {
+			return nil, errors.New("no validated residential chain")
+		}
 	}
 	for _, id := range attempts {
 		if ctx.Err() != nil {

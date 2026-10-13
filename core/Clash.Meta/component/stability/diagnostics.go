@@ -130,6 +130,27 @@ func (j *Journal) Store(group string, state Snapshot) error {
 	if !validID(group) {
 		return errors.New("invalid statistics identity")
 	}
+	checkNodes := func(nodes []Stats) bool {
+		if len(nodes) > MaxCandidates {
+			return false
+		}
+		for _, node := range nodes {
+			if !validID(node.ID) || !validID(node.Relay) || !validID(node.Airport) || !reasons[node.LastError] {
+				return false
+			}
+		}
+		return true
+	}
+	if !checkNodes(state.Nodes) || !reasons[state.Reason] || len(state.Networks) > 8 {
+		j.dropped++
+		return errors.New("invalid statistics fields")
+	}
+	for key, nodes := range state.Networks {
+		if !validID(key) || !checkNodes(nodes) {
+			j.dropped++
+			return errors.New("invalid network statistics fields")
+		}
+	}
 	state.Primary = ""
 	state.Active = nil
 	state.Running = false

@@ -203,8 +203,12 @@ var methodHandlers = map[CoreMethod]methodHandler{
 			response.success(result)
 		})
 	}),
-	stabilityNetworkChangedMethod: withoutArguments(func(response MethodResponse) {
-		safeGo(response, func() { tunnel.StabilityNetworkChanged(); bumpRouteEpoch(); response.success(true) })
+	stabilityNetworkChangedMethod: withArguments(func(params *StabilityParams, response MethodResponse) {
+		safeGo(response, func() {
+			tunnel.StabilityNetworkChanged(params.NetworkKey, params.Online)
+			bumpRouteEpoch()
+			response.success(true)
+		})
 	}),
 
 	initClashMethod: withArguments(func(params *InitParams, response MethodResponse) {

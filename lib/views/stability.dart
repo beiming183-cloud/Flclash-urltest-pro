@@ -49,9 +49,9 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
   }
 
   Future<void> _refresh() async {
-    if (_reading ||
-        !mounted ||
-        ref.read(coreStatusProvider) != CoreStatus.connected) {
+    if (_reading || !mounted) return;
+    if (ref.read(coreStatusProvider) != CoreStatus.connected) {
+      if (_groups.isNotEmpty) setState(() => _groups = []);
       return;
     }
     _reading = true;
@@ -207,14 +207,23 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
           tilePadding: EdgeInsets.zero,
           title: Text('${l.stabilityCandidates} (${active.length}/3)'),
           children: [
-            for (final node in nodes.where(
-              (node) => active.contains(node['id']),
-            ))
+            for (final node
+                in nodes
+                    .where(
+                      (node) =>
+                          active.contains(node['id']) ||
+                          node['quarantined'] == true ||
+                          (DateTime.tryParse(
+                                node['coolingUntil'] as String? ?? '',
+                              )?.isAfter(DateTime.now()) ??
+                              false),
+                    )
+                    .take(12))
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(names[node['id']] as String),
                 subtitle: Text(
-                  '${l.stabilityLatency}: ${(node['ewmaMs'] as num).round()} ms · P95 ${(node['p95Ms'] as num).round()} ms\n${l.stabilityLastCheck}: ${_age(node['lastCheck'] as String)} · ${l.stabilitySamples}: ${node['sampleCount']}',
+                  '${l.stabilityLatency}: ${_latency(node['ewmaMs'] as num)} ms · P95 ${_latency(node['p95Ms'] as num)} ms\n${l.stabilityLastCheck}: ${_age(node['lastCheck'] as String)} · ${l.stabilitySamples}: ${node['sampleCount']} · ${node['error'] ?? ''}',
                 ),
                 trailing: TextButton(
                   onPressed: _busy
@@ -281,6 +290,8 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
       ],
     );
   }
+
+  String _latency(num value) => value > 0 ? '${value.round()}' : '—';
 
   String _age(String value) {
     final date = DateTime.tryParse(value);

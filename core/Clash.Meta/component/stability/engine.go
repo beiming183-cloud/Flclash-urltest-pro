@@ -3,6 +3,7 @@
 package stability
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"sort"
@@ -65,17 +66,19 @@ type Stats struct {
 }
 
 type Snapshot struct {
-	Epoch       uint64   `json:"networkEpoch"`
-	Generation  uint64   `json:"generation"`
-	Primary     string   `json:"primary"`
-	Active      []string `json:"active"`
-	Nodes       []Stats  `json:"nodes"`
-	Reason      string   `json:"lastSwitchReason"`
-	BudgetUsed  int      `json:"budgetUsed"`
-	BudgetLimit int      `json:"budgetLimit"`
-	Paused      bool     `json:"paused"`
-	PowerSave   bool     `json:"powerSave"`
-	Running     bool     `json:"running"`
+	Epoch       uint64             `json:"networkEpoch"`
+	Generation  uint64             `json:"generation"`
+	Primary     string             `json:"primary"`
+	Active      []string           `json:"active"`
+	Nodes       []Stats            `json:"nodes"`
+	Reason      string             `json:"lastSwitchReason"`
+	BudgetUsed  int                `json:"budgetUsed"`
+	BudgetLimit int                `json:"budgetLimit"`
+	Paused      bool               `json:"paused"`
+	PowerSave   bool               `json:"powerSave"`
+	Running     bool               `json:"running"`
+	NetworkKey  string             `json:"networkKey,omitempty"`
+	Networks    map[string][]Stats `json:"networks,omitempty"`
 }
 
 type Engine struct {
@@ -92,6 +95,9 @@ type Engine struct {
 	powerSave   bool
 	budgetStart time.Time
 	budget      int
+	network     string
+	networks    map[string][]Stats
+	networkLRU  []string
 }
 
 func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
@@ -101,7 +107,7 @@ func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
 	if now == nil {
 		now = time.Now
 	}
-	e := &Engine{now: now, nodes: make(map[string]*Stats), epoch: 1, generation: 1, budgetStart: now()}
+	e := &Engine{now: now, nodes: make(map[string]*Stats), epoch: 1, generation: 1, budgetStart: now(), network: "startup", networks: map[string][]Stats{}}
 	for _, c := range candidates {
 		if c.ID == "" || c.Relay == "" || e.nodes[c.ID] != nil {
 			return nil, errors.New("invalid candidate identity")
@@ -196,6 +202,9 @@ func (e *Engine) choose(now time.Time) {
 				break
 			}
 		}
+	}
+	if old == "" && e.primary != "" {
+		e.reason = "promote"
 	}
 	if old != e.primary {
 		e.generation++
@@ -313,7 +322,7 @@ func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now := e.now()
-	result := Snapshot{Epoch: e.epoch, Generation: e.generation, Primary: e.primary, Active: append([]string{}, e.active...), Reason: e.reason, BudgetUsed: e.budget, BudgetLimit: 900, Paused: e.paused, PowerSave: e.powerSave, Nodes: []Stats{}}
+	result := Snapshot{Epoch: e.epoch, Generation: e.generation, Primary: e.primary, Active: append([]string{}, e.active...), Reason: e.reason, BudgetUsed: e.budget, BudgetLimit: 900, Paused: e.paused, PowerSave: e.powerSave, Nodes: []Stats{}, NetworkKey: e.network}
 	for _, id := range e.order {
 		s := *e.nodes[id]
 		e.decay(&s, now)
@@ -401,6 +410,13 @@ func (e *Engine) Invalidate() {
 func (e *Engine) Restore(snapshot Snapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	for key, nodes := range snapshot.Networks {
+		if len(e.networks) >= 8 || !validID(key) {
+			continue
+		}
+		e.networks[key] = nodes
+		e.networkLRU = append(e.networkLRU, key)
+	}
 	for _, saved := range snapshot.Nodes {
 		if s := e.nodes[saved.ID]; s != nil {
 			s.Success = saved.Success
@@ -414,4 +430,86 @@ func (e *Engine) Restore(snapshot Snapshot) {
 			}
 		}
 	}
+}
+
+func (e *Engine) SwitchNetwork(key string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if key == e.network {
+		return
+	}
+	if e.network != "startup" {
+		saved := []Stats{}
+		for _, id := range e.order {
+			s := *e.nodes[id]
+			s.Samples = nil
+			if s.LastCheck.IsZero() {
+				s.LastCheck = s.decayedAt
+			}
+			saved = append(saved, s)
+		}
+		e.networks[e.network] = saved
+		e.networkLRU = removeNetwork(e.networkLRU, e.network)
+		e.networkLRU = append(e.networkLRU, e.network)
+	}
+	for _, id := range e.order {
+		candidate := e.nodes[id].Candidate
+		e.nodes[id] = &Stats{Candidate: candidate, decayedAt: e.now()}
+	}
+	for _, saved := range e.networks[key] {
+		if s := e.nodes[saved.ID]; s != nil {
+			s.Success = saved.Success
+			s.Failure = saved.Failure
+			s.Count = saved.Count
+			s.EWMA = saved.EWMA
+			s.P95 = saved.P95
+			if !saved.LastCheck.IsZero() {
+				s.decayedAt = saved.LastCheck
+				e.decay(s, e.now())
+			}
+		}
+	}
+	e.network = key
+	e.networkLRU = removeNetwork(e.networkLRU, key)
+	for {
+		data, _ := json.Marshal(e.networks)
+		if len(e.networkLRU) <= 7 && len(data) <= ExportLimit-256*1024 {
+			break
+		}
+		if len(e.networkLRU) == 0 {
+			break
+		}
+		old := e.networkLRU[0]
+		e.networkLRU = e.networkLRU[1:]
+		delete(e.networks, old)
+	}
+	e.epoch++
+	e.generation++
+	e.primary = ""
+	e.active = nil
+	e.reason = "network_changed"
+}
+
+func removeNetwork(keys []string, key string) []string {
+	result := []string{}
+	for _, item := range keys {
+		if item != key {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func (e *Engine) Statistics() Snapshot {
+	state := e.Snapshot()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	state.Networks = map[string][]Stats{}
+	for key, nodes := range e.networks {
+		state.Networks[key] = append([]Stats(nil), nodes...)
+	}
+	if validID(e.network) {
+		state.Networks[e.network] = state.Nodes
+	}
+	return state
 }
