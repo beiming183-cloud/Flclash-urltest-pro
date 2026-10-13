@@ -13,6 +13,8 @@ Changes to baseline in this handoff:
 - Original workflows relocated into `docs/stability-pro/upstream-workflows/*.disabled`, avoiding automatic upstream release/telemetry/signing jobs in this new repository.
 - Added design, reference code/tests/fixtures, handoff checks, lightweight CI and ignore entries. Application runtime logic is unchanged in this delivery.
 
+2026-10-14: User requested a mobile-friendly GitHub Release. Added an explicit test-APK publishing workflow which verifies and republishes the successful cloud branch artifact, without merging that branch or rebuilding the application on main. The release tag points at the APK's actual source commit. The upstream release workflows remain disabled.
+
 ## Research references
 
 These are design references, not dependencies or claims that their algorithms run in this app:

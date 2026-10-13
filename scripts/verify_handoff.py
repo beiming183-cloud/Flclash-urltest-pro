@@ -42,8 +42,8 @@ def verify():
     if '尚未接入' not in (ROOT / 'README.md').read_text(encoding='utf-8'):
         raise AssertionError('handoff status must distinguish runtime from reference implementation')
     workflows = list((ROOT / '.github/workflows').glob('*'))
-    if {p.name for p in workflows} != {'stability-reference.yml'}:
-        raise AssertionError('only lightweight handoff workflow is enabled initially')
+    if {p.name for p in workflows} != {'stability-reference.yml', 'publish-stability-test.yml'}:
+        raise AssertionError('unexpected workflow in the handoff and test-release branch')
     incident = json.loads((ROOT / 'fixtures/stability-pro/observed-incident.json').read_text())
     if not incident['unknown'] or not incident['excluded']:
         raise AssertionError('incident must preserve uncertainty and sanitization boundary')
@@ -57,7 +57,7 @@ def verify():
                 if re.search(r'-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----', text):
                     raise AssertionError(f'private key in new handoff files: {p.name}')
     result = {'requiredFiles': len(REQUIRED), 'localLinks': links, 'runtimeIntegrated': False,
-              'androidBuilt': False, 'onlyReferenceCiEnabled': True}
+              'androidBuilt': False, 'testApkPublishingWorkflowEnabled': True}
     print(json.dumps(result, ensure_ascii=False))
     return result
 
