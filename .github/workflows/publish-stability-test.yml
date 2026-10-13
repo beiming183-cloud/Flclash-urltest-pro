@@ -1,0 +1,81 @@
+name: Publish verified stability test APK
+on:
+  push:
+    branches: ['main']
+    paths: ['.github/workflows/publish-stability-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-stability-test-20261014
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_COMMIT: '494c811b653e444300e2216552120e0ffe5bb2fc'
+      RELEASE_TAG: 'stability-pro-test-20261014'
+    steps:
+      - name: Download and verify successful build artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/actions/runs/38440611267" > run.json
+          gh api "repos/$GH_REPO/actions/artifacts/11837316516" > artifact.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open('run.json'))
+          artifact = json.load(open('artifact.json'))
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['head_sha'] == os.environ['SOURCE_COMMIT']
+          assert not artifact['expired']
+          assert artifact['name'] == 'FlClash-URLTest-Pro-arm64-test'
+          assert artifact['digest'] == 'sha256:e06d303c11f0751831e838812175e5bce38225fc72464fbe861f67932f4a2659'
+          PY
+          gh api "repos/$GH_REPO/actions/artifacts/11837316516/zip" > verified-artifact.zip
+          python3 - <<'PY'
+          import hashlib, os, pathlib, zipfile
+          data = pathlib.Path('verified-artifact.zip').read_bytes()
+          assert hashlib.sha256(data).hexdigest() == 'e06d303c11f0751831e838812175e5bce38225fc72464fbe861f67932f4a2659'
+          expected = {'FlClash-URLTest-Pro-arm64-test.apk', 'SHA256SUMS.txt', 'SIGNATURE.txt', 'SOURCE_COMMIT.txt'}
+          out = pathlib.Path('delivery')
+          out.mkdir()
+          with zipfile.ZipFile('verified-artifact.zip') as archive:
+              assert set(archive.namelist()) == expected and len(archive.infolist()) == 4
+              for name in expected:
+                  (out / name).write_bytes(archive.read(name))
+          assert (out / 'SOURCE_COMMIT.txt').read_text().strip() == os.environ['SOURCE_COMMIT']
+          checksum = (out / 'SHA256SUMS.txt').read_text().split()[0]
+          apk = out / 'FlClash-URLTest-Pro-arm64-test.apk'
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == checksum
+          (out / 'SHA256SUMS.txt').write_text(checksum + '  ' + apk.name + '\n')
+          print('Verified APK bytes:', apk.stat().st_size)
+          print('Verified APK SHA256:', checksum)
+          PY
+      - name: Publish mobile download release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'NOTES'
+          Android arm64 测试版。手机在下方 Assets 点击 **FlClash-URLTest-Pro-arm64-test.apk** 即可下载安装，不用进入 Actions 或解压构建产物。
+
+          应用 ID：com.beiming.flclash.urltestpro.dev。与官方 FlClash 独立，保留原版；启动此 VPN 前停止其他 VPN。
+
+          包含固定住宅出口的三候选稳定切换、建立连接失败重试、后台检测，以及 4 MiB 循环日志 / 10 分钟调试 / 最大 2 MiB 诊断导出。
+
+          **这是测试签名版，真实手机和 ChatGPT SSL 问题仍需验证。普通 URLTest 配置不会自动启用稳定策略，需使用 stable-failover 配置。**
+
+          [安装与配置说明](https://github.com/beiming183-cloud/Flclash-urltest-pro/blob/codex/stability-pro/docs/stability-pro/QUICKSTART.zh-CN.md)
+
+          构建来源：494c811b653e444300e2216552120e0ffe5bb2fc；[已通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267)。校验文件与签名信息附在 Assets。
+          NOTES
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 安卓测试版 · 2026-10-14' --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" delivery/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file release-notes.md
+          gh release view "$RELEASE_TAG" --json url,assets,isDraft,isPrerelease
