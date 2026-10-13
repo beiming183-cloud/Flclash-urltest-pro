@@ -11,6 +11,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window/window.dart';
 
+const _windowTitleInset = 88.0;
+
 const _windowGeometryDelay = Duration(milliseconds: 120);
 
 class WindowManager extends ConsumerStatefulWidget {
@@ -467,7 +469,13 @@ class WindowHeaderBar extends StatelessWidget {
             ),
             if (title != null)
               Positioned.fill(
-                child: IgnorePointer(child: Center(child: title)),
+                left: _windowTitleInset,
+                right: _windowTitleInset,
+                child: IgnorePointer(
+                  child: Center(
+                    child: FittedBox(fit: BoxFit.scaleDown, child: title),
+                  ),
+                ),
               ),
             if (actions != null)
               Positioned(

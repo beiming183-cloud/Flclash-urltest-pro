@@ -755,9 +755,10 @@ class MessageLookup extends MessageLookupByLibrary {
     "inputRuleContent": MessageLookupByLibrary.simpleMessage(
       "Введите содержимое правила",
     ),
-    "installedAppsPermissionDeniedMessage": MessageLookupByLibrary.simpleMessage(
-      "Разрешение на список приложений отклонено, поэтому установленные приложения недоступны. Предоставьте его вручную в системных настройках.",
-    ),
+    "installedAppsPermissionDeniedMessage":
+        MessageLookupByLibrary.simpleMessage(
+          "Разрешение на список приложений отклонено, поэтому установленные приложения недоступны. Предоставьте его вручную в системных настройках.",
+        ),
     "installedAppsPermissionDesc": MessageLookupByLibrary.simpleMessage(
       "Эта система не выдаёт список установленных приложений без разрешения. Предоставьте его, чтобы настроить прокси для отдельных приложений.",
     ),
@@ -1464,6 +1465,58 @@ class MessageLookup extends MessageLookupByLibrary {
       "Стратегия распределения не может быть пустой",
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("Список SSID пуст"),
+    "stabilityActionFailed": MessageLookupByLibrary.simpleMessage(
+      "Ошибка. Повторите или экспортируйте диагностику.",
+    ),
+    "stabilityAutomatic": MessageLookupByLibrary.simpleMessage(
+      "Автовыбор и резервирование",
+    ),
+    "stabilityCandidates": MessageLookupByLibrary.simpleMessage(
+      "Активные кандидаты",
+    ),
+    "stabilityDebug": MessageLookupByLibrary.simpleMessage(
+      "Подробная диагностика",
+    ),
+    "stabilityDebugTip": MessageLookupByLibrary.simpleMessage(
+      "Завершается через 10 минут",
+    ),
+    "stabilityExport": MessageLookupByLibrary.simpleMessage(
+      "Экспорт диагностики (≤2 MiB)",
+    ),
+    "stabilityImportTip": MessageLookupByLibrary.simpleMessage(
+      "Импортируйте профиль stable-failover. Обычные профили URLTest поддерживаются.",
+    ),
+    "stabilityLastCheck": MessageLookupByLibrary.simpleMessage(
+      "Последняя проверка",
+    ),
+    "stabilityLatency": MessageLookupByLibrary.simpleMessage(
+      "Задержка всей цепочки",
+    ),
+    "stabilityMark": MessageLookupByLibrary.simpleMessage("Отметить сбой"),
+    "stabilityNoChain": MessageLookupByLibrary.simpleMessage(
+      "Нет проверенной цепочки",
+    ),
+    "stabilityPowerSave": MessageLookupByLibrary.simpleMessage(
+      "Экономные проверки",
+    ),
+    "stabilityPrimary": MessageLookupByLibrary.simpleMessage("Текущая цепочка"),
+    "stabilityReason": MessageLookupByLibrary.simpleMessage(
+      "Причина переключения",
+    ),
+    "stabilityReconnectTip": MessageLookupByLibrary.simpleMessage(
+      "Резервирование для новых соединений. Прерванные потоки требуют переподключения.",
+    ),
+    "stabilityRefresh": MessageLookupByLibrary.simpleMessage(
+      "Обновить состояние",
+    ),
+    "stabilitySamples": MessageLookupByLibrary.simpleMessage("Проверки"),
+    "stabilityTest": MessageLookupByLibrary.simpleMessage("Тест"),
+    "stabilityTitle": MessageLookupByLibrary.simpleMessage(
+      "Стабильность цепочки",
+    ),
+    "stabilityUnavailable": MessageLookupByLibrary.simpleMessage(
+      "Состояние ядра недоступно",
+    ),
     "stackMode": MessageLookupByLibrary.simpleMessage("Режим стека"),
     "standard": MessageLookupByLibrary.simpleMessage("Стандартный"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(

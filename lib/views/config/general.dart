@@ -393,11 +393,6 @@ class GeneralView extends ConsumerWidget {
         select: (state) => state.checkCertificate,
         update: (state, value) => state.copyWith(checkCertificate: value),
       ),
-      _appSettingToggle(
-        title: (l) => l.autoCheckUpdate,
-        select: (state) => state.autoCheckUpdate,
-        update: (state, value) => state.copyWith(autoCheckUpdate: value),
-      ),
     ];
   }
 
@@ -440,13 +435,6 @@ class GeneralView extends ConsumerWidget {
         select: (state) => state.openLogs,
         update: (state, value) => state.copyWith(openLogs: value),
       ),
-      if (system.isAndroid)
-        _appSettingToggle(
-          title: (l) => l.crashlytics,
-          subtitle: (l) => l.crashlyticsTip,
-          select: (state) => state.crashlytics,
-          update: (state, value) => state.copyWith(crashlytics: value),
-        ),
     ];
   }
 

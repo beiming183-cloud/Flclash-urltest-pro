@@ -1,8 +1,12 @@
-# FlClash URLTest Pro — 云端开发交接包
+# FlClash URLTest Pro — 稳定切换实验版
 
 目标：住宅出口固定，机场中继可以改变；从完整链路中选出三个稳定候选，故障时快速尝试备用，并输出体积受控的诊断日志。
 
-**状态：源码基线 + 完整开发规格 + 可运行参考模型。Android 稳定选择器、拨号重试和新日志界面尚未接入。直接编译当前 Flutter 源码得到的是上游基线，不是已经修复的客户端。**
+**状态：arm64测试APK已构建，Go/Flutter/Android自动化检查通过。稳定组、建立阶段备用重试、原生调度、诊断和Flutter界面已接入，原交接包“尚未接入”的状态已更新。真机网络及ChatGPT验收仍待执行，不能据此认定用户网络故障已修复。**
+
+[下载测试APK包](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267/artifacts/11837316516) · [安装与配置](docs/stability-pro/QUICKSTART.zh-CN.md) · [实际进度与验收边界](docs/stability-pro/PROGRESS.zh-CN.md)
+
+下载ZIP后安装其中的FlClash-URLTest-Pro-arm64-test.apk。测试包使用独立ID（.dev），可与官方版并存；自定义稳定策略需要配置stable-failover组。
 
 请从 [云端任务入口](docs/stability-pro/START_HERE.zh-CN.md) 开始。原项目说明保留在 [README_UPSTREAM.md](README_UPSTREAM.md)。
 

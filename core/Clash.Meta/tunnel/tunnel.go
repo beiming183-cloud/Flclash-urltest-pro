@@ -228,11 +228,25 @@ func RuleProviders() map[string]P.RuleProvider {
 
 // UpdateProxies handle update proxies
 func UpdateProxies(newProxies map[string]C.Proxy, newProviders map[string]P.ProxyProvider) {
+	stabilityLifecycle.Lock()
+	defer stabilityLifecycle.Unlock()
+	for _, p := range AllProxies() {
+		if g, ok := p.Adapter().(stabilityGroup); ok {
+			g.Stop()
+		}
+	}
 	configMux.Lock()
 	proxies = newProxies
 	providers = newProviders
 	invalidateAllProxies()
 	configMux.Unlock()
+	if stabilityRunning && stabilityOnline {
+		for _, p := range newProxies {
+			if g, ok := p.Adapter().(stabilityGroup); ok {
+				g.NetworkChanged(stabilityNetworkKey, stabilityOnline)
+			}
+		}
+	}
 }
 
 func UpdateListeners(newListeners map[string]C.InboundListener) {

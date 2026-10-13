@@ -55,6 +55,7 @@ const (
 	ZeroTier
 	EasyTier
 	GostRelay
+	StableFailover
 )
 
 const (
@@ -178,6 +179,9 @@ type Proxy interface {
 type AdapterType int
 
 func (at AdapterType) String() string {
+	if at == StableFailover {
+		return "StableFailover"
+	}
 	switch at {
 	case Direct:
 		return "Direct"

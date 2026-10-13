@@ -42,8 +42,8 @@ def verify():
     if '尚未接入' not in (ROOT / 'README.md').read_text(encoding='utf-8'):
         raise AssertionError('handoff status must distinguish runtime from reference implementation')
     workflows = list((ROOT / '.github/workflows').glob('*'))
-    if {p.name for p in workflows} != {'stability-reference.yml'}:
-        raise AssertionError('only lightweight handoff workflow is enabled initially')
+    if {p.name for p in workflows} != {'stability-reference.yml', 'stability-android.yml'}:
+        raise AssertionError('unexpected workflow enabled')
     incident = json.loads((ROOT / 'fixtures/stability-pro/observed-incident.json').read_text())
     if not incident['unknown'] or not incident['excluded']:
         raise AssertionError('incident must preserve uncertainty and sanitization boundary')
@@ -56,8 +56,8 @@ def verify():
                 text = p.read_text(encoding='utf-8')
                 if re.search(r'-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----', text):
                     raise AssertionError(f'private key in new handoff files: {p.name}')
-    result = {'requiredFiles': len(REQUIRED), 'localLinks': links, 'runtimeIntegrated': False,
-              'androidBuilt': False, 'onlyReferenceCiEnabled': True}
+    result = {'requiredFiles': len(REQUIRED), 'localLinks': links, 'runtimeIntegrated': (ROOT / 'core/Clash.Meta/adapter/outboundgroup/stable.go').exists(),
+              'androidBuilt': False, 'onlyReferenceCiEnabled': False}
     print(json.dumps(result, ensure_ascii=False))
     return result
 

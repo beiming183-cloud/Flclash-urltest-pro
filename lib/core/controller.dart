@@ -40,6 +40,17 @@ class CoreController {
     return _instance!;
   }
 
+  Future<List<dynamic>> getStabilityState() => _interface.getStabilityState();
+  Future<bool> setStabilityMode(Map<String, dynamic> params) =>
+      _interface.setStabilityMode(params);
+  Future<Map<String, dynamic>?> probeStabilityCandidate(
+    Map<String, dynamic> params,
+  ) => _interface.probeStabilityCandidate(params);
+  Future<bool> markStabilityFault(String group) =>
+      _interface.markStabilityFault(group);
+  Future<Map<String, dynamic>?> exportStabilityDiagnostics() =>
+      _interface.exportStabilityDiagnostics();
+
   Future<CoreLifecycleResult> start() => _interface.start();
 
   Future<CoreLifecycleResult> restart() => _interface.restart();

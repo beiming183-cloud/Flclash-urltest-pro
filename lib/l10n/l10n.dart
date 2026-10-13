@@ -6447,6 +6447,201 @@ class AppLocalizations {
       args: [],
     );
   }
+
+  /// `Residential chain stability`
+  String get stabilityTitle {
+    return Intl.message(
+      'Residential chain stability',
+      name: 'stabilityTitle',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Refresh state`
+  String get stabilityRefresh {
+    return Intl.message(
+      'Refresh state',
+      name: 'stabilityRefresh',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Import a stable-failover profile to enable. Ordinary URLTest profiles remain supported.`
+  String get stabilityImportTip {
+    return Intl.message(
+      'Import a stable-failover profile to enable. Ordinary URLTest profiles remain supported.',
+      name: 'stabilityImportTip',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `No validated residential chain`
+  String get stabilityNoChain {
+    return Intl.message(
+      'No validated residential chain',
+      name: 'stabilityNoChain',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Current chain`
+  String get stabilityPrimary {
+    return Intl.message(
+      'Current chain',
+      name: 'stabilityPrimary',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Switch reason`
+  String get stabilityReason {
+    return Intl.message(
+      'Switch reason',
+      name: 'stabilityReason',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Automatic selection and failover`
+  String get stabilityAutomatic {
+    return Intl.message(
+      'Automatic selection and failover',
+      name: 'stabilityAutomatic',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Active candidates`
+  String get stabilityCandidates {
+    return Intl.message(
+      'Active candidates',
+      name: 'stabilityCandidates',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Full chain latency`
+  String get stabilityLatency {
+    return Intl.message(
+      'Full chain latency',
+      name: 'stabilityLatency',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Last check`
+  String get stabilityLastCheck {
+    return Intl.message(
+      'Last check',
+      name: 'stabilityLastCheck',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Samples`
+  String get stabilitySamples {
+    return Intl.message(
+      'Samples',
+      name: 'stabilitySamples',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Test`
+  String get stabilityTest {
+    return Intl.message('Test', name: 'stabilityTest', desc: '', args: []);
+  }
+
+  /// `Power saving probes`
+  String get stabilityPowerSave {
+    return Intl.message(
+      'Power saving probes',
+      name: 'stabilityPowerSave',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Detailed debug`
+  String get stabilityDebug {
+    return Intl.message(
+      'Detailed debug',
+      name: 'stabilityDebug',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Automatically ends after 10 minutes`
+  String get stabilityDebugTip {
+    return Intl.message(
+      'Automatically ends after 10 minutes',
+      name: 'stabilityDebugTip',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Mark recent fault`
+  String get stabilityMark {
+    return Intl.message(
+      'Mark recent fault',
+      name: 'stabilityMark',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Export diagnostics (≤2 MiB)`
+  String get stabilityExport {
+    return Intl.message(
+      'Export diagnostics (≤2 MiB)',
+      name: 'stabilityExport',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Failover applies to new connections. Interrupted streams need reconnection.`
+  String get stabilityReconnectTip {
+    return Intl.message(
+      'Failover applies to new connections. Interrupted streams need reconnection.',
+      name: 'stabilityReconnectTip',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Core state is currently unavailable`
+  String get stabilityUnavailable {
+    return Intl.message(
+      'Core state is currently unavailable',
+      name: 'stabilityUnavailable',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Action failed; retry or export diagnostics`
+  String get stabilityActionFailed {
+    return Intl.message(
+      'Action failed; retry or export diagnostics',
+      name: 'stabilityActionFailed',
+      desc: '',
+      args: [],
+    );
+  }
 }
 
 class AppLocalizationDelegate extends LocalizationsDelegate<AppLocalizations> {
