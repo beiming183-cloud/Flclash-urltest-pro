@@ -30,13 +30,13 @@ cd core
 CGO_ENABLED=0 go test .
 CGO_ENABLED=0 go vet .
 cd ..
+dart setup.dart android
 cd android
 ./gradlew :service:compileDebugKotlin :app:compileDebugKotlin
 cd ..
-dart setup.dart android
 ```
 
-纯 Dart测试时参考 `.agents/commands.md` 的 build hook规则；不要提交 `build_assets:false`，否则打包可能缺少新内核。Core功能变更还需在 `core/Clash.Meta` 运行新组/适配器针对性 Go测试和race测试，及网络故障注入套件。
+上游未跟踪 Gradle wrapper 启动脚本，因此先通过 Flutter/setup 构建生成需要的 Android 工程辅助文件，再运行独立 Kotlin 编译检查。纯 Dart测试时参考 `.agents/commands.md` 的 build hook规则；不要提交 `build_assets:false`，否则打包可能缺少新内核。Core功能变更还需在 `core/Clash.Meta` 运行新组/适配器针对性 Go测试和race测试，及网络故障注入套件。
 
 先完成独立 package ID 和 Firebase配置隔离后再构建。release无自有签名时上游可能退回debug签名和`.dev` suffix：显示为测试包，不伪称正式版。稳定更新需要自有固定签名，不共享私钥。
 
