@@ -57,6 +57,10 @@ jobs:
       - name: Android toolchain
         run: |
           sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;28.2.13676358'
+          ndk_root="$ANDROID_HOME/ndk/28.2.13676358"
+          test -x "$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          printf 'ANDROID_NDK_HOME=%s\nANDROID_NDK_ROOT=%s\n' "$ndk_root" "$ndk_root" >> "$GITHUB_ENV"
+          flutter config --android-ndk "$ndk_root"
           rustup toolchain install 1.98.1 --profile minimal
           rustup target add aarch64-linux-android --toolchain 1.98.1
       - name: Flutter validation
