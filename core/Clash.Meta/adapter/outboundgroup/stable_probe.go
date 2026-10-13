@@ -4,8 +4,10 @@ package outboundgroup
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -80,12 +82,18 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		return client.Do(req)
 	}
 	resp, err := request("https://www.gstatic.com/generate_204")
-	if err != nil && ctx.Err() == nil {
-		reason, hard := stableError(err)
+	if (err != nil || resp.StatusCode != 204) && ctx.Err() == nil {
+		reason, hard := "service_failed", false
+		if err != nil {
+			reason, hard = stableError(err)
+		}
 		if hard {
 			sample.Error = reason
 			sample.Hard = true
 			return sample
+		}
+		if resp != nil {
+			resp.Body.Close()
 		}
 		resp, err = request("https://cp.cloudflare.com/generate_204")
 	}
@@ -98,6 +106,9 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		sample.Error = "cert_untrusted"
 		sample.Hard = true
 		return sample
+	}
+	if verify {
+		sample.TLSInfo = append(sample.TLSInfo, stableTLSInfo("control", *resp.TLS))
 	}
 	if resp.StatusCode != 204 {
 		sample.Error = "service_failed"
@@ -120,6 +131,11 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 			hostname, _, _ := net.SplitHostPort(host)
 			tc := tls.Client(conn, &tls.Config{ServerName: hostname, MinVersion: tls.VersionTLS12})
 			err = tc.HandshakeContext(ctx)
+			service := "chatgpt"
+			if strings.HasPrefix(host, "android.") {
+				service = "android"
+			}
+			sample.TLSInfo = append(sample.TLSInfo, stableTLSInfo(service, tc.ConnectionState()))
 			tc.Close()
 			if err != nil {
 				sample.Error, sample.Hard = stableError(err)
@@ -153,4 +169,19 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	}
 	sample.OK = true
 	return sample
+}
+
+func stableTLSInfo(service string, state tls.ConnectionState) stability.TLSInfo {
+	info := stability.TLSInfo{Service: service, Version: state.Version, Verified: len(state.VerifiedChains) > 0}
+	if len(state.PeerCertificates) > 0 {
+		cert := state.PeerCertificates[0]
+		fingerprint := sha256.Sum256(cert.Raw)
+		spki := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+		info.Certificate = hex.EncodeToString(fingerprint[:])
+		info.SPKI = hex.EncodeToString(spki[:])
+		info.SANCount = len(cert.DNSNames) + len(cert.IPAddresses)
+		info.NotBefore = cert.NotBefore
+		info.NotAfter = cert.NotAfter
+	}
+	return info
 }

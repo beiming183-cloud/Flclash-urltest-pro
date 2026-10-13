@@ -324,6 +324,9 @@ func (s *Stable) Probe(ctx context.Context, id string, verify, elect bool) (stab
 		return sample, context.Canceled
 	}
 	s.engine.Record(id, sample, elect)
+	if len(sample.TLSInfo) > 0 {
+		s.journal.TLS(id, sample.TLSInfo)
+	}
 	s.log("probe", sample.Error, id, sample.OK, sample.Latency)
 	if elect && s.engine.Snapshot().Generation != state.Generation {
 		s.log("switch", s.engine.Snapshot().Reason, s.engine.Snapshot().Primary, true, 0)

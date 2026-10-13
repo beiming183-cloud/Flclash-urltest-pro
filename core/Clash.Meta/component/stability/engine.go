@@ -26,6 +26,18 @@ type Sample struct {
 	Hard    bool
 	Latency time.Duration
 	Error   string
+	TLSInfo []TLSInfo
+}
+
+type TLSInfo struct {
+	Service     string    `json:"serviceTag"`
+	Certificate string    `json:"certSha256"`
+	SPKI        string    `json:"spkiSha256"`
+	SANCount    int       `json:"sanCount"`
+	NotBefore   time.Time `json:"notBefore"`
+	NotAfter    time.Time `json:"notAfter"`
+	Version     uint16    `json:"version"`
+	Verified    bool      `json:"verified"`
 }
 
 type Stats struct {

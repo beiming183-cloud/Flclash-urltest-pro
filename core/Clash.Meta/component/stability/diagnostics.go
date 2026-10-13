@@ -50,6 +50,7 @@ type Journal struct {
 	last         *Event
 	lastSnapshot time.Time
 	states       map[string]Snapshot
+	tls          map[string][]TLSInfo
 }
 
 var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_failover": true, "network_changed": true, "network_offline": true, "relay_dial_timeout": true, "connect_rejected": true, "residential_auth": true, "tls_aborted": true, "cert_untrusted": true, "cert_hostname": true, "cert_expired": true, "unexpected_exit": true, "service_failed": true, "cancelled": true, "budget_exhausted": true, "unknown": true, "stopped": true}
@@ -74,7 +75,7 @@ func OpenJournal(dir string, now func() time.Time) (*Journal, error) {
 	if err != nil || len(key) != 32 {
 		return nil, errors.New("diagnostic identity unavailable")
 	}
-	j := &Journal{dir: dir, key: key, start: now(), now: now, states: map[string]Snapshot{}}
+	j := &Journal{dir: dir, key: key, start: now(), now: now, states: map[string]Snapshot{}, tls: map[string][]TLSInfo{}}
 	if info, err := os.Stat(filepath.Join(dir, "statistics.json")); err == nil && info.Size() <= ExportLimit {
 		data, err := os.ReadFile(filepath.Join(dir, "statistics.json"))
 		if err == nil {
@@ -85,6 +86,36 @@ func OpenJournal(dir string, now func() time.Time) (*Journal, error) {
 		}
 	}
 	return j, nil
+}
+
+func (j *Journal) TLS(node string, info []TLSInfo) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !validID(node) || len(info) > 3 {
+		return
+	}
+	for _, item := range info {
+		if item.Service != "control" && item.Service != "chatgpt" && item.Service != "android" {
+			return
+		}
+		for _, hash := range []string{item.Certificate, item.SPKI} {
+			if hash != "" {
+				if len(hash) != 64 {
+					return
+				}
+				if _, err := hex.DecodeString(hash); err != nil {
+					return
+				}
+			}
+		}
+	}
+	if len(j.tls) >= MaxCandidates && j.tls[node] == nil {
+		for key := range j.tls {
+			delete(j.tls, key)
+			break
+		}
+	}
+	j.tls[node] = append([]TLSInfo(nil), info...)
 }
 
 func (j *Journal) Statistics(group string) Snapshot {
@@ -269,7 +300,7 @@ func (j *Journal) Export() ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false}}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false}}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false}}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err
