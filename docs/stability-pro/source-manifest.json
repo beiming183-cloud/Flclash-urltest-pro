@@ -1,0 +1,8 @@
+{
+  "appCommit": "68c71b8ef9b7486a224972eb371ff153c6b2de0f",
+  "coreCommit": "8597778c7df410ebe88c57e59eaab32d203156df",
+  "archives": {
+    "upstream-app.zip": "f1e7830acc7232263d4978afdffc07fca2332d0a5b840ccfaa7b1033745d1517",
+    "upstream-core.zip": "df495d62baedb5cb7d0e0081e72b012a00d19e93e247947d3e4dabe949aa982f"
+  }
+}

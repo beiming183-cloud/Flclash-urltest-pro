@@ -1,0 +1,19 @@
+name: Stability handoff checks
+on:
+  push:
+    paths: ['reference/**', 'scripts/verify_handoff.py', 'docs/stability-pro/**', 'fixtures/stability-pro/**', '.github/workflows/stability-reference.yml']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s reference/tests -v
+      - run: python scripts/verify_handoff.py
