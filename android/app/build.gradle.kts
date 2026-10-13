@@ -25,7 +25,9 @@ val hasReleaseSigning = releaseStoreFile.exists() &&
 android {
     namespace = "com.follow.clash"
     compileSdk = libs.versions.compileSdk.get().toInt()
-    ndkVersion = libs.versions.ndkVersion.get()
+    // Flutter discovers this literal before Gradle resolves version catalogs.
+    ndkVersion = "28.2.13676358"
+    check(ndkVersion == libs.versions.ndkVersion.get())
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
