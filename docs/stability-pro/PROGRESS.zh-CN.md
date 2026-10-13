@@ -22,12 +22,18 @@
 
 已执行：超过16MiB模拟事件、秘密字符串拒绝、ZIP JSON解析、轮转、debug到期、重启身份保持测试。Flutter analyze 已通过（No issues found）。本地化通过源ARB与生成器更新四种语言。
 
-## P5 验收状态
+## P5 自动化验收与测试 APK
 
-Flutter全套测试首次受Rust跨平台组件下载阻断，正在使用同版本明确工具链重试；Android APK构建正在准备；GitHub Actions新增真实原生/安卓验证流程。尚未取得APK、SHA256或真机证据，不能宣称全部功能验收完成。
+最终构建 [GitHub Actions #10](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267) 的 native / android 两个任务全部成功。Flutter analyze：No issues found；Flutter 全量回归：3348通过、3跳过；Go统计/出站组race、vet和wrapper测试通过；Android独立Kotlin编译及common/service/app JVM测试任务通过。此前本地WebDAV仿真测试对新名称空格的处理已修正。
 
-新增按网络独立聚合、最多8个LRU、网络验证状态为离线时暂停调度；TLS导出只含证书/SPKI哈希和有效期/SAN数量。受控CONNECT认证拒绝30轮：原URLTest当次恢复0/30，稳定模式30/30，P95约0.9ms，仅代表内存故障注入，不是实际机场性能。
+[下载 arm64 测试包](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267/artifacts/11837316516)，解压后安装FlClash-URLTest-Pro-arm64-test.apk（构建日志64.7MB）。下载包还包含SHA256SUMS.txt、SIGNATURE.txt、SOURCE_COMMIT.txt。签名经apksigner verify校验；这是debug签名测试版，applicationId为com.beiming.flclash.urltestpro.dev，不能视为正式签名发行版。来源commit：494c811b653e444300e2216552120e0ffe5bb2fc。GitHub artifact ZIP为62,885,952字节，其ZIP摘要为e06d303c11f0751831e838812175e5bce38225fc72464fbe861f67932f4a2659；APK自身摘要在包内SHA256SUMS.txt。
 
-Flutter完整本地回归：3348通过，3个失败：两个WebDAV仿真服务未解码新名称空格（已修正测试仿真器，14个WebDAV测试通过）；一个当前PID可见性受本地环境限制；所改界面/协议/导入/标题回归均通过。GitHub native CI已通过。Android SDK实际包名为platforms;android-37.0，已取得同API37 SDK，未降低SDK。
+新增按网络独立聚合、最多8个LRU、网络验证状态离线时暂停调度；TLS导出只含证书/SPKI哈希和有效期/SAN数量。受控CONNECT认证拒绝30轮：原URLTest当次恢复0/30，稳定模式30/30，P95约0.7–0.9ms，仅代表内存故障注入，不是实际机场性能。参考Python测试34项已通过。
 
-仍需完善或验证：具体阶段建立时延分解；目标HTTP业务状态展示；WiFi/蜂窝/离线/Doze及ChatGPT真机验收。调试和测试服务只能证明标准TLS校验，不能证明ChatGPT应用的证书策略。本地不含真实账号配置。
+工具链保持上游pin：Flutter3.47.4、Dart3.13.3、Go1.26.4、Rust1.98.1、JDK17、NDK28.2.13676358；AndroidSDK实际包名为platforms;android-37.0（同API37）。Flutter native hook通过ANDROID_NDK_HOME/ROOT明确选择该NDK；测试临时关闭Go build hook，APK步骤已恢复build_assets:true并实际编译Go/Rust/JNI。
+
+[安装与配置步骤](QUICKSTART.zh-CN.md)说明如何启用stable-failover及执行手机测试。普通URLTest配置不会自动开启新策略，示例保留地址不能直接使用。
+
+## 尚未完成的验收
+
+具体阶段建立时延分解、目标HTTP业务状态展示尚需完善；Wi-Fi/蜂窝/离线/Doze及ChatGPT真机验收尚未执行。云端及测试服务只能证明标准TLS校验与受控逻辑，不能证明ChatGPT应用的证书策略或用户实际网络故障已修复。测试不包含真实账号配置，不宣称20个真机案例全部通过。
