@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/metacubex/mihomo/tunnel"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
@@ -167,6 +168,45 @@ func withoutArguments(handle func(response MethodResponse)) methodHandler {
 }
 
 var methodHandlers = map[CoreMethod]methodHandler{
+	getStabilityStateMethod: withoutArguments(func(response MethodResponse) { response.success(getStabilityState()) }),
+	setStabilityModeMethod: withArguments(func(p *StabilityParams, response MethodResponse) {
+		if err := setStabilityMode(p); err != nil {
+			response.failure("stability_error", err.Error(), nil)
+			return
+		}
+		response.success(true)
+	}),
+	probeStabilityCandidateMethod: withArguments(func(p *StabilityParams, response MethodResponse) {
+		safeGo(response, func() {
+			result, err := probeStabilityCandidate(p)
+			if err != nil {
+				response.failure("stability_error", err.Error(), nil)
+				return
+			}
+			response.success(result)
+		})
+	}),
+	markStabilityFaultMethod: withArguments(func(p *StabilityParams, response MethodResponse) {
+		if err := markStabilityFault(p); err != nil {
+			response.failure("stability_error", err.Error(), nil)
+			return
+		}
+		response.success(true)
+	}),
+	exportStabilityDiagnosticsMethod: withoutArguments(func(response MethodResponse) {
+		safeGo(response, func() {
+			result, err := exportStabilityDiagnostics()
+			if err != nil {
+				response.failure("stability_error", "diagnostic export failed", nil)
+				return
+			}
+			response.success(result)
+		})
+	}),
+	stabilityNetworkChangedMethod: withoutArguments(func(response MethodResponse) {
+		safeGo(response, func() { tunnel.StabilityNetworkChanged(); bumpRouteEpoch(); response.success(true) })
+	}),
+
 	initClashMethod: withArguments(func(params *InitParams, response MethodResponse) {
 		response.success(handleInitClash(params))
 	}),

@@ -732,9 +732,10 @@ class MessageLookup extends MessageLookupByLibrary {
     "inputRuleContent": MessageLookupByLibrary.simpleMessage(
       "Enter the rule content",
     ),
-    "installedAppsPermissionDeniedMessage": MessageLookupByLibrary.simpleMessage(
-      "The app list permission was denied, so installed apps cannot be listed. Please grant it manually in system settings.",
-    ),
+    "installedAppsPermissionDeniedMessage":
+        MessageLookupByLibrary.simpleMessage(
+          "The app list permission was denied, so installed apps cannot be listed. Please grant it manually in system settings.",
+        ),
     "installedAppsPermissionDesc": MessageLookupByLibrary.simpleMessage(
       "This system hides the installed app list until the permission is granted. Authorize it to configure the per-app proxy.",
     ),
@@ -1387,6 +1388,50 @@ class MessageLookup extends MessageLookupByLibrary {
       "Split strategy cannot be empty",
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs are empty"),
+    "stabilityActionFailed": MessageLookupByLibrary.simpleMessage(
+      "Action failed; retry or export diagnostics",
+    ),
+    "stabilityAutomatic": MessageLookupByLibrary.simpleMessage(
+      "Automatic selection and failover",
+    ),
+    "stabilityCandidates": MessageLookupByLibrary.simpleMessage(
+      "Active candidates",
+    ),
+    "stabilityDebug": MessageLookupByLibrary.simpleMessage("Detailed debug"),
+    "stabilityDebugTip": MessageLookupByLibrary.simpleMessage(
+      "Automatically ends after 10 minutes",
+    ),
+    "stabilityExport": MessageLookupByLibrary.simpleMessage(
+      "Export diagnostics (≤2 MiB)",
+    ),
+    "stabilityImportTip": MessageLookupByLibrary.simpleMessage(
+      "Import a stable-failover profile to enable. Ordinary URLTest profiles remain supported.",
+    ),
+    "stabilityLastCheck": MessageLookupByLibrary.simpleMessage("Last check"),
+    "stabilityLatency": MessageLookupByLibrary.simpleMessage(
+      "Full chain latency",
+    ),
+    "stabilityMark": MessageLookupByLibrary.simpleMessage("Mark recent fault"),
+    "stabilityNoChain": MessageLookupByLibrary.simpleMessage(
+      "No validated residential chain",
+    ),
+    "stabilityPowerSave": MessageLookupByLibrary.simpleMessage(
+      "Power saving probes",
+    ),
+    "stabilityPrimary": MessageLookupByLibrary.simpleMessage("Current chain"),
+    "stabilityReason": MessageLookupByLibrary.simpleMessage("Switch reason"),
+    "stabilityReconnectTip": MessageLookupByLibrary.simpleMessage(
+      "Failover applies to new connections. Interrupted streams need reconnection.",
+    ),
+    "stabilityRefresh": MessageLookupByLibrary.simpleMessage("Refresh state"),
+    "stabilitySamples": MessageLookupByLibrary.simpleMessage("Samples"),
+    "stabilityTest": MessageLookupByLibrary.simpleMessage("Test"),
+    "stabilityTitle": MessageLookupByLibrary.simpleMessage(
+      "Residential chain stability",
+    ),
+    "stabilityUnavailable": MessageLookupByLibrary.simpleMessage(
+      "Core state is currently unavailable",
+    ),
     "stackMode": MessageLookupByLibrary.simpleMessage("Stack mode"),
     "standard": MessageLookupByLibrary.simpleMessage("Standard"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(

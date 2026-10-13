@@ -62,6 +62,7 @@ func handleStartListener() bool {
 	configMu.Lock()
 	defer configMu.Unlock()
 	isRunning.Store(true)
+	tunnel.SetStabilityRunning(true)
 	updateListeners(currentConfig)
 	resolver.ResetConnection()
 	refreshRoute()
@@ -71,6 +72,7 @@ func handleStartListener() bool {
 func handleStopListener() bool {
 	configMu.Lock()
 	defer configMu.Unlock()
+	tunnel.SetStabilityRunning(false)
 	isRunning.Store(false)
 	listener.StopListener()
 	resolver.ResetConnection()
@@ -95,6 +97,7 @@ func handleShutdown() bool {
 	stopRouteWatch()
 
 	configMu.Lock()
+	tunnel.SetStabilityRunning(false)
 	isRunning.Store(false)
 	listener.StopListener()
 	updater.StopGeoUpdater()
@@ -149,7 +152,7 @@ const globalProxyName = "GLOBAL"
 
 func isProxyGroupType(adapterType constant.AdapterType) bool {
 	switch adapterType {
-	case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance:
+	case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance, constant.StableFailover:
 		return true
 	default:
 		return false

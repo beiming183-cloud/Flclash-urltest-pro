@@ -34,6 +34,7 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentDnsList = listOf<String>()
+    private var currentNetwork: Network? = null
 
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -109,8 +110,12 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 
     @Synchronized
     private fun updateDns() {
-        val dnsList = networkInfos.asSequence()
-            .minByOrNull(::networkPriority)
+        val selected = networkInfos.asSequence().minByOrNull(::networkPriority)
+        if (selected?.key != currentNetwork) {
+            currentNetwork = selected?.key
+            Core.invokeMethod("{\"method\":\"stabilityNetworkChanged\",\"arguments\":null}") { }
+        }
+        val dnsList = selected
             ?.value
             ?.dnsList
             .orEmpty()

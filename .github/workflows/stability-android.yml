@@ -1,0 +1,91 @@
+name: Stability Android validation
+on:
+  push:
+    branches: ['main', 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stability-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: core/go.sum
+      - name: Go core and fault injection
+        run: |
+          cd core/Clash.Meta
+          go test -race -count=1 ./component/stability ./adapter/outboundgroup
+          go vet ./component/stability ./adapter/outboundgroup
+          cd ..
+          CGO_ENABLED=0 go test -count=1 .
+          CGO_ENABLED=0 go vet .
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: core/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          cache: true
+      - uses: android-actions/setup-android@v3
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: plugins/rust_api/rust
+      - name: Android toolchain
+        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;28.2.13676358'
+      - name: Flutter validation
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          cp pubspec.yaml /tmp/pro-pubspec.yaml
+          sed -i '0,/build_assets: true/s//build_assets: false/' pubspec.yaml
+          flutter test --reporter expanded
+          cp /tmp/pro-pubspec.yaml pubspec.yaml
+      - name: Build isolated arm64 test APK
+        run: |
+          printf '{"APP_ENV":"pre"}\n' > env.json
+          flutter build apk --release --target-platform android-arm64 --dart-define-from-file=env.json
+      - name: Native Android lifecycle checks
+        run: |
+          cd android
+          ./gradlew :service:compileDebugKotlin :app:compileDebugKotlin :common:testDebugUnitTest :service:testDebugUnitTest :app:testDebugUnitTest -x :app:compileFlutterBuildDebug -x :app:copyFlutterAssetsDebug
+      - name: Artifact provenance
+        run: |
+          mkdir -p build/pro-delivery
+          cp build/app/outputs/flutter-apk/app-release.apk build/pro-delivery/FlClash-URLTest-Pro-arm64-test.apk
+          sha256sum build/pro-delivery/*.apk > build/pro-delivery/SHA256SUMS.txt
+          git rev-parse HEAD > build/pro-delivery/SOURCE_COMMIT.txt
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs build/pro-delivery/*.apk > build/pro-delivery/SIGNATURE.txt
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: FlClash-URLTest-Pro-arm64-test
+          path: build/pro-delivery/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: stability-build-failure
+          path: |
+            .dart_tool/setup_build_cache/hook.log
+            android/**/build/reports/tests/

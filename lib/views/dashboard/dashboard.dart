@@ -10,6 +10,8 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../stability.dart';
+
 import 'widget_metrics.dart';
 import 'widget_registry.dart';
 import 'widgets/core_status_button.dart';
@@ -211,7 +213,15 @@ class _DashboardViewState extends ConsumerState<DashboardView>
               return CustomScrollView(
                 slivers: [
                   SliverPadding(
-                    padding: padding,
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: context.contentTopPadding,
+                    ),
+                    sliver: const SliverToBoxAdapter(child: StabilityPanel()),
+                  ),
+                  SliverPadding(
+                    padding: padding.copyWith(top: 16),
                     sliver: SliverToBoxAdapter(
                       child: Align(
                         alignment: Alignment.topCenter,

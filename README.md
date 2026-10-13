@@ -2,7 +2,7 @@
 
 目标：住宅出口固定，机场中继可以改变；从完整链路中选出三个稳定候选，故障时快速尝试备用，并输出体积受控的诊断日志。
 
-**状态：源码基线 + 完整开发规格 + 可运行参考模型。Android 稳定选择器、拨号重试和新日志界面尚未接入。直接编译当前 Flutter 源码得到的是上游基线，不是已经修复的客户端。**
+**状态：实验版开发中。Go 稳定组、建立阶段备用重试、native调度、诊断和Flutter界面已接入。原交接包的“尚未接入”状态已更新；APK构建及真机验收仍待通过，不能据此认定用户网络故障已修复。详见 [实际进度](docs/stability-pro/PROGRESS.zh-CN.md)。**
 
 请从 [云端任务入口](docs/stability-pro/START_HERE.zh-CN.md) 开始。原项目说明保留在 [README_UPSTREAM.md](README_UPSTREAM.md)。
 

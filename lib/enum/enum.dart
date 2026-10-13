@@ -55,7 +55,10 @@ enum GroupType {
 
   static GroupType parse(String type) {
     return switch (type.toLowerCase()) {
-      'url-test' || 'urltest' => URLTest,
+      'url-test' ||
+      'urltest' ||
+      'stable-failover' ||
+      'stablefailover' => URLTest,
       'select' || 'selector' => Selector,
       'fallback' => Fallback,
       'load-balance' || 'loadbalance' => LoadBalance,

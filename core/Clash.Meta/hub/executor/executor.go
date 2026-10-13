@@ -533,6 +533,7 @@ func updateIPTables(cfg *config.Config) {
 }
 
 func Shutdown() {
+	tunnel.SetStabilityRunning(false)
 	listener.Cleanup()
 	tproxy.CleanupTProxyIPTables()
 	resolver.StoreFakePoolState()

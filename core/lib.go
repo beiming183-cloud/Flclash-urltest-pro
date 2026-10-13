@@ -26,6 +26,7 @@ import (
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/tunnel"
 )
 
 var (
@@ -331,6 +332,7 @@ func quickSetup(callback unsafe.Pointer, initParamsChar *C.char, setupParamsChar
 			return
 		}
 		isRunning.Store(true)
+		tunnel.SetStabilityRunning(true)
 		invokeResult(callback, handleSetupConfig(setupParams))
 	}()
 }

@@ -3,6 +3,13 @@ import 'dart:async';
 import 'package:fl_clash/enum/enum.dart';
 
 enum CoreMethod {
+  getStabilityState,
+  setStabilityMode,
+  probeStabilityCandidate,
+  markStabilityFault,
+  exportStabilityDiagnostics,
+  stabilityNetworkChanged,
+
   message,
   initClash,
   getIsInit,

@@ -69,6 +69,14 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 		log.Errorln("The group [%s] with dialer-proxy configuration is not allowed, please set it directly on the proxy instead", groupOption.Name)
 	}
 
+	if groupOption.Type == "stable-failover" {
+		opt := StableOption{}
+		if err := decoder.Decode(config, &opt); err != nil {
+			return nil, err
+		}
+		return NewStable(groupOption, opt, proxyMap)
+	}
+
 	groupName := groupOption.Name
 
 	if groupOption.EmptyFallback == "" {
