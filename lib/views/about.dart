@@ -26,17 +26,6 @@ class AboutView extends ConsumerWidget {
     Contributor(avatar: 'assets/images/avatar/arue.jpg', name: 'Arue'),
   ];
 
-  Future<void> _checkUpdate(BuildContext context, WidgetRef ref) async {
-    if (ref.read(loadingProvider(LoadingTag.checkUpdate))) return;
-    final commonAction = ref.read(commonActionProvider.notifier);
-    final data = await globalState.loadingRun<Map<String, dynamic>?>(
-      request.checkForUpdate,
-      title: context.appLocalizations.checkUpdate,
-      tag: LoadingTag.checkUpdate,
-    );
-    unawaited(commonAction.checkUpdateResultHandle(data: data, isUser: true));
-  }
-
   Widget _buildLinkItem({
     required Glyph glyph,
     required String title,
@@ -57,9 +46,7 @@ class AboutView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appLocalizations = context.appLocalizations;
-    final isLoading = ref.watch(loadingProvider(LoadingTag.checkUpdate));
     return CommonScaffold(
-      isLoading: isLoading,
       title: appLocalizations.about,
       body: ListView(
         padding: const EdgeInsets.symmetric(
@@ -67,10 +54,6 @@ class AboutView extends ConsumerWidget {
         ).copyWith(top: context.contentTopPadding, bottom: 32),
         children: [
           _AboutHero(
-            isCheckingUpdate: isLoading,
-            onCheckUpdate: () {
-              _checkUpdate(context, ref);
-            },
             onEnterDeveloperMode: () {
               ref
                   .read(appSettingProvider.notifier)
@@ -125,15 +108,9 @@ class AboutView extends ConsumerWidget {
 }
 
 class _AboutHero extends StatelessWidget {
-  final bool isCheckingUpdate;
-  final VoidCallback onCheckUpdate;
   final VoidCallback onEnterDeveloperMode;
 
-  const _AboutHero({
-    required this.isCheckingUpdate,
-    required this.onCheckUpdate,
-    required this.onEnterDeveloperMode,
-  });
+  const _AboutHero({required this.onEnterDeveloperMode});
 
   static const _logoSize = 96.0;
   static const _logoInset = 14.0;
@@ -202,11 +179,6 @@ class _AboutHero extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton.tonalIcon(
-            onPressed: isCheckingUpdate ? null : onCheckUpdate,
-            icon: const GlyphIcon(AppGlyphs.sync, fill: 1),
-            label: Text(appLocalizations.checkUpdate),
-          ),
         ],
       ),
     );

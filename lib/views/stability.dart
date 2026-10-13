@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -57,7 +56,7 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
     }
     _reading = true;
     try {
-      final groups = await coreController.getStabilityState();
+      final groups = await ref.read(coreHandlerProvider).getStabilityState();
       if (mounted) setState(() => _groups = groups);
     } catch (_) {
       if (mounted) {
@@ -93,17 +92,19 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
     bool? debug,
   }) async {
     final state = Map<String, dynamic>.from(group['state'] as Map);
-    final ok = await coreController.setStabilityMode({
+    final ok = await ref.read(coreHandlerProvider).setStabilityMode({
       'group': group['group'],
       'paused': paused ?? state['paused'] == true,
       'powerSave': powerSave ?? state['powerSave'] == true,
-      'debug': debug ?? (group['debugRemainingSec'] as num) > 0,
+      'debug': ?debug,
     });
     if (!ok) throw StateError('stability mode not applied');
   }
 
   Future<void> _export() async {
-    final data = await coreController.exportStabilityDiagnostics();
+    final data = await ref
+        .read(coreHandlerProvider)
+        .exportStabilityDiagnostics();
     if (data == null) throw StateError('diagnostic export unavailable');
     final bytes = base64Decode(data['base64'] as String);
     if (bytes.length > 2 * 1024 * 1024 || bytes.length != data['size']) {
@@ -219,7 +220,8 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
                   onPressed: _busy
                       ? null
                       : () => _run(() async {
-                          final result = await coreController
+                          final result = await ref
+                              .read(coreHandlerProvider)
                               .probeStabilityCandidate({
                                 'group': group['group'],
                                 'node': node['id'],
@@ -258,9 +260,9 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
                   onPressed: _busy
                       ? null
                       : () => _run(() async {
-                          if (!await coreController.markStabilityFault(
-                            group['group'] as String,
-                          )) {
+                          if (!await ref
+                              .read(coreHandlerProvider)
+                              .markStabilityFault(group['group'] as String)) {
                             throw StateError('fault mark failed');
                           }
                         }),

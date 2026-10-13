@@ -16,7 +16,7 @@ type StabilityParams struct {
 	Node      string `json:"node"`
 	Paused    bool   `json:"paused"`
 	PowerSave bool   `json:"powerSave"`
-	Debug     bool   `json:"debug"`
+	Debug     *bool  `json:"debug"`
 }
 
 func init() {
@@ -55,7 +55,9 @@ func setStabilityMode(params *StabilityParams) error {
 	if err != nil {
 		return err
 	}
-	j.Debug(params.Debug)
+	if params.Debug != nil {
+		j.Debug(*params.Debug)
+	}
 	return nil
 }
 

@@ -12,6 +12,7 @@ concurrency:
 env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  RUSTUP_TOOLCHAIN: '1.98.1'
 jobs:
   native:
     runs-on: ubuntu-latest
@@ -48,11 +49,16 @@ jobs:
           flutter-version: '3.47.4'
           cache: true
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: plugins/rust_api/rust
       - name: Android toolchain
-        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;28.2.13676358'
+        run: |
+          sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;28.2.13676358'
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add aarch64-linux-android --toolchain 1.98.1
       - name: Flutter validation
         run: |
           flutter pub get

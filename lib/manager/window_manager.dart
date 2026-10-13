@@ -467,7 +467,13 @@ class WindowHeaderBar extends StatelessWidget {
             ),
             if (title != null)
               Positioned.fill(
-                child: IgnorePointer(child: Center(child: title)),
+                left: trafficLightsWidth + 8,
+                right: trafficLightsWidth + 8,
+                child: IgnorePointer(
+                  child: Center(
+                    child: FittedBox(fit: BoxFit.scaleDown, child: title),
+                  ),
+                ),
               ),
             if (actions != null)
               Positioned(
