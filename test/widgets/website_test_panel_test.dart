@@ -11,6 +11,24 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('custom website rejects HTTP and accepts HTTPS', (tester) async {
+    await tester.pumpWidget(const _TestApp(child: WebsiteTestPanel(
+      connected: false,
+      port: 7890,
+    )));
+    await tester.tap(find.byTooltip('Add website'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'http://example.com');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a valid HTTPS URL'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'https://example.com');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('example.com'), findsOneWidget);
+    expect(tester.takeException(), null);
+  });
+
   testWidgets('website panel tests each site through the supplied proxy port', (tester) async {
     final calls = <(Uri, int)>[];
     await tester.pumpWidget(_TestApp(child: WebsiteTestPanel(

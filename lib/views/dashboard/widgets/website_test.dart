@@ -74,16 +74,19 @@ class _WebsiteTestPanelState extends State<WebsiteTestPanel> {
     _pending.add(site.url);
     _results.remove(site.url);
     _notify();
-    WebsiteProbeResult result;
     try {
-      result = await widget.probe(Uri.parse(site.url), widget.port);
+      final result = await widget.probe(Uri.parse(site.url), widget.port);
+      if (mounted && epoch == _epoch) _results[site.url] = result;
     } catch (_) {
-      result = const WebsiteProbeResult(WebsiteProbeState.failed);
+      if (mounted && epoch == _epoch) {
+        _results[site.url] = const WebsiteProbeResult(WebsiteProbeState.failed);
+      }
+    } finally {
+      if (mounted && epoch == _epoch) {
+        _pending.remove(site.url);
+        _notify();
+      }
     }
-    if (!mounted || epoch != _epoch) return;
-    _pending.remove(site.url);
-    _results[site.url] = result;
-    _notify();
   }
 
   Future<void> _testAll() async {
