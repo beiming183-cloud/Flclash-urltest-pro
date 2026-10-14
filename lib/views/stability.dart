@@ -155,6 +155,8 @@ class _StabilityViewState extends State<StabilityView> {
               }),
             if (active.isEmpty) Text(l10n.stabilityWaiting),
             const SizedBox(height: 12),
+            Text(l10n.stabilityConnectionLogging),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,

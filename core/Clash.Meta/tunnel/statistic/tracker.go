@@ -9,6 +9,7 @@ import (
 	"github.com/metacubex/mihomo/common/buf"
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
+	"github.com/metacubex/mihomo/component/stability"
 	C "github.com/metacubex/mihomo/constant"
 
 	"github.com/gofrs/uuid/v5"
@@ -39,6 +40,7 @@ type tcpTracker struct {
 	manager *Manager
 
 	pushToManager bool `json:"-"`
+	flow          *stability.BusinessFlow
 }
 
 func (tt *tcpTracker) ID() string {
@@ -56,6 +58,7 @@ func (tt *tcpTracker) Read(b []byte) (int, error) {
 		tt.manager.PushDownloaded(tt.Conn.Chains().Last(), download)
 	}
 	tt.DownloadTotal.Add(download)
+	tt.flow.Bytes(false, download)
 	return n, err
 }
 
@@ -66,6 +69,7 @@ func (tt *tcpTracker) ReadBuffer(buffer *buf.Buffer) (err error) {
 		tt.manager.PushDownloaded(tt.Chains().Last(), download)
 	}
 	tt.DownloadTotal.Add(download)
+	tt.flow.Bytes(false, download)
 	return
 }
 
@@ -75,6 +79,7 @@ func (tt *tcpTracker) UnwrapReader() (io.Reader, []N.CountFunc) {
 			tt.manager.PushDownloaded(tt.Chains().Last(), download)
 		}
 		tt.DownloadTotal.Add(download)
+		tt.flow.Bytes(false, download)
 	}}
 }
 
@@ -85,6 +90,7 @@ func (tt *tcpTracker) Write(b []byte) (int, error) {
 		tt.manager.PushUploaded(tt.Chains().Last(), upload)
 	}
 	tt.UploadTotal.Add(upload)
+	tt.flow.Bytes(true, upload)
 	return n, err
 }
 
@@ -95,6 +101,9 @@ func (tt *tcpTracker) WriteBuffer(buffer *buf.Buffer) (err error) {
 		tt.manager.PushUploaded(tt.Chains().Last(), upload)
 	}
 	tt.UploadTotal.Add(upload)
+	if err == nil {
+		tt.flow.Bytes(true, upload)
+	}
 	return
 }
 
@@ -104,6 +113,7 @@ func (tt *tcpTracker) UnwrapWriter() (io.Writer, []N.CountFunc) {
 			tt.manager.PushUploaded(tt.Chains().Last(), upload)
 		}
 		tt.UploadTotal.Add(upload)
+		tt.flow.Bytes(true, upload)
 	}}
 }
 
@@ -116,7 +126,7 @@ func (tt *tcpTracker) Upstream() any {
 	return tt.Conn
 }
 
-func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool) *tcpTracker {
+func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool, flows ...*stability.BusinessFlow) *tcpTracker {
 	metadata.RemoteDst = conn.RemoteDestination()
 
 	tt := &tcpTracker{
@@ -135,6 +145,9 @@ func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.R
 		pushToManager: pushToManager,
 	}
 
+	if len(flows) > 0 {
+		tt.flow = flows[0]
+	}
 	if pushToManager {
 		if uploadTotal > 0 {
 			manager.PushUploaded(tt.Chains().Last(), uploadTotal)

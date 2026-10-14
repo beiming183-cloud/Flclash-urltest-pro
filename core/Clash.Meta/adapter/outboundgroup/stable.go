@@ -35,6 +35,7 @@ func StabilityJournal() (*stability.Journal, error) {
 		}
 		sharedJournal = j
 		journalHome = home
+		j.ObserveBusiness()
 	}
 	return sharedJournal, nil
 }
@@ -290,6 +291,7 @@ func (s *Stable) Stop() {
 		_ = s.journal.Store(s.groupID, s.engine.Statistics())
 		s.engine.Invalidate()
 		s.log("network_changed", "stopped", "", false, 0)
+		s.journal.BusinessTick(s.groupID, s.engine.Snapshot())
 	}
 }
 func (s *Stable) Close() error { s.Stop(); return nil }
@@ -432,7 +434,15 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		}
 		attempt, release := context.WithTimeout(ctx, timeout)
 		copyMeta := *metadata
+		flow := stability.BusinessFromContext(ctx)
+		flow.DialAttempt(stability.BusinessRoute{Group: s.groupID, Node: id, Protocol: s.byID[id].Type().String(), Epoch: state.Epoch, Generation: state.Generation}, s.byID[id].Name())
+		started := time.Now()
 		conn, err := s.byID[id].DialContext(attempt, &copyMeta)
+		observedError := err
+		if conn == nil && observedError == nil {
+			observedError = errors.New("empty connection")
+		}
+		flow.DialResult(observedError, time.Since(started))
 		release()
 		if err == nil && conn != nil {
 			if ctx.Err() != nil || !s.engine.PromoteDial(id, state.Epoch) {

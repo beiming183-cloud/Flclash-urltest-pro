@@ -36,6 +36,8 @@ type Event struct {
 	Generation      uint64    `json:"routeGeneration"`
 	LatencyMs       int64     `json:"latencyMs,omitempty"`
 	FirstResponseMs int64     `json:"firstResponseMs,omitempty"`
+	DialMs          int64     `json:"dialMs,omitempty"`
+	HandshakeMs     int64     `json:"tlsHandshakeMs,omitempty"`
 	OK              bool      `json:"ok"`
 	Repeated        int       `json:"repeated,omitempty"`
 	Phase           string    `json:"phase,omitempty"`
@@ -54,6 +56,7 @@ type Journal struct {
 	lastSnapshot time.Time
 	states       map[string]Snapshot
 	tls          map[string][]TLSInfo
+	business     *businessRecorder
 }
 
 var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_failover": true, "network_changed": true, "network_offline": true, "relay_dial_timeout": true, "connect_rejected": true, "residential_auth": true, "tls_aborted": true, "cert_untrusted": true, "cert_hostname": true, "cert_expired": true, "unexpected_exit": true, "service_failed": true, "cancelled": true, "budget_exhausted": true, "unknown": true, "stopped": true}
@@ -85,6 +88,7 @@ func OpenJournal(dir string, now func() time.Time) (*Journal, error) {
 		return nil, errors.New("diagnostic identity unavailable")
 	}
 	j := &Journal{dir: dir, key: key, start: now(), now: now, states: map[string]Snapshot{}, tls: map[string][]TLSInfo{}}
+	j.business = &businessRecorder{j: j, active: map[string]*BusinessFlow{}, session: j.ID(time.Now().String())}
 	if info, err := os.Stat(filepath.Join(dir, "statistics.json")); err == nil && info.Size() <= ExportLimit {
 		data, err := os.ReadFile(filepath.Join(dir, "statistics.json"))
 		if err == nil {
@@ -297,6 +301,11 @@ func (j *Journal) Record(event Event) error {
 }
 
 func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
+	business, active, businessDropped, err := j.business.export()
+	if err != nil {
+		return nil, err
+	}
+	businessTruncated := 0
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.last != nil {
@@ -350,7 +359,11 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 			json.Unmarshal(line, &e)
 			counts[e.Reason] += 1 + e.Repeated
 		}
-		manifest := map[string]any{"schemaVersion": 1, "events": len(lines), "truncated": truncated, "dropped": j.dropped, "generatedAt": j.now().UTC(), "debugRemainingSec": max(0, int64(j.debugUntil.Sub(j.now()).Seconds()))}
+		manifest := map[string]any{"schemaVersion": 2, "events": len(lines), "truncated": truncated, "dropped": j.dropped, "generatedAt": j.now().UTC(), "debugRemainingSec": max(0, int64(j.debugUntil.Sub(j.now()).Seconds())), "businessDiagnosticVersion": 1, "businessEvents": len(business), "businessActive": len(active), "businessDropped": businessDropped, "businessTruncated": businessTruncated, "businessScope": "passive-tcp", "businessRetentionMinutes": 30}
+		if len(business) > 0 {
+			manifest["businessCoverageStart"] = business[0].Time
+			manifest["businessCoverageEnd"] = business[len(business)-1].Time
+		}
 		if len(lines) > 0 {
 			var first, last Event
 			json.Unmarshal(lines[0], &first)
@@ -361,7 +374,7 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101407", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err
@@ -382,7 +395,23 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		io.WriteString(w, "Sanitized native stability diagnostics. No profiles, credentials or application payloads. Coverage and truncation are recorded in manifest.json.\n")
+		io.WriteString(w, "Sanitized native stability diagnostics. No profiles, credentials or application payloads. Coverage and truncation are recorded in manifest.json.\nRead ChatGPT连接时间线.txt first; chatgpt-connections.jsonl contains passive TCP lifecycle records and chatgpt-active.json includes connections still open at export. No application SSL exceptions or decrypted TLS traffic are available.\n")
+		w, err = z.Create("chatgpt-connections.jsonl")
+		if err != nil {
+			return nil, err
+		}
+		for _, event := range business {
+			if err = json.NewEncoder(w).Encode(event); err != nil {
+				return nil, err
+			}
+		}
+		w, err = z.Create("ChatGPT连接时间线.txt")
+		if err != nil {
+			return nil, err
+		}
+		if _, err = io.WriteString(w, businessTimeline(business, active, businessDropped, businessTruncated, j.now())); err != nil {
+			return nil, err
+		}
 		w, err = z.Create("nodes.csv")
 		if err != nil {
 			return nil, err
@@ -404,8 +433,14 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		if buf.Len() <= ExportLimit {
 			return buf.Bytes(), nil
 		}
-		if len(lines) == 0 {
+		if len(lines) == 0 && len(business) == 0 {
 			return nil, errors.New("summary exceeds export budget")
+		}
+		if len(business) >= len(lines) && len(business) > 0 {
+			n := max(1, len(business)/10)
+			business = business[n:]
+			businessTruncated += n
+			continue
 		}
 		n := max(1, len(lines)/10)
 		lines = lines[n:]

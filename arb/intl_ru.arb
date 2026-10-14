@@ -640,5 +640,6 @@
   "stabilitySelectionTimeout": "Тайм-аут подключения или проверки",
   "stabilitySelectionReordered": "Кандидаты пересортированы",
   "stabilitySelectionVerified": "Проверка цепочки и выхода пройдена",
-  "stabilitySelectionFailed": "Проверка не пройдена; временно исключён"
+  "stabilitySelectionFailed": "Проверка не пройдена; временно исключён",
+  "stabilityConnectionLogging": "Подключения ChatGPT записываются автоматически. Экспортируйте диагностику сразу после ошибки; архив содержит хронологию."
 }

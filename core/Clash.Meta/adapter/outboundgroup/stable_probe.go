@@ -160,7 +160,7 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 }
 
 func stableTLSInfo(service string, state tls.ConnectionState) stability.TLSInfo {
-	info := stability.TLSInfo{Service: service, Version: state.Version, Verified: len(state.VerifiedChains) > 0}
+	info := stability.TLSInfo{Service: service, Version: state.Version, Verified: len(state.VerifiedChains) > 0, HandshakeComplete: state.HandshakeComplete}
 	if len(state.PeerCertificates) > 0 {
 		cert := state.PeerCertificates[0]
 		fingerprint := sha256.Sum256(cert.Raw)

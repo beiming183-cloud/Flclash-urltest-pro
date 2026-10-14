@@ -35,16 +35,17 @@ type Sample struct {
 }
 
 type TLSInfo struct {
-	Service     string    `json:"serviceTag"`
-	Certificate string    `json:"certSha256"`
-	SPKI        string    `json:"spkiSha256"`
-	SANCount    int       `json:"sanCount"`
-	NotBefore   time.Time `json:"notBefore"`
-	NotAfter    time.Time `json:"notAfter"`
-	Version     uint16    `json:"version"`
-	Verified    bool      `json:"verified"`
-	CheckedAt   time.Time `json:"checkedAt"`
-	Epoch       uint64    `json:"networkEpoch"`
+	Service           string    `json:"serviceTag"`
+	Certificate       string    `json:"certSha256"`
+	SPKI              string    `json:"spkiSha256"`
+	SANCount          int       `json:"sanCount"`
+	NotBefore         time.Time `json:"notBefore"`
+	NotAfter          time.Time `json:"notAfter"`
+	Version           uint16    `json:"version"`
+	Verified          bool      `json:"verified"`
+	HandshakeComplete bool      `json:"handshakeComplete"`
+	CheckedAt         time.Time `json:"checkedAt"`
+	Epoch             uint64    `json:"networkEpoch"`
 }
 
 type Stats struct {

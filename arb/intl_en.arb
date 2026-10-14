@@ -683,5 +683,6 @@
   "stabilitySelectionTimeout": "Connection or verification timed out",
   "stabilitySelectionReordered": "Candidate pool reordered",
   "stabilitySelectionVerified": "Chain and exit verification passed",
-  "stabilitySelectionFailed": "Verification failed; candidate excluded"
+  "stabilitySelectionFailed": "Verification failed; candidate excluded",
+  "stabilityConnectionLogging": "ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included."
 }

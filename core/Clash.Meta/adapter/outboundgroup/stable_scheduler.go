@@ -195,5 +195,6 @@ func (s *Stable) schedule(ctx context.Context) {
 			}
 		}
 		s.checkTargetTLS(ctx)
+		s.journal.BusinessTick(s.groupID, s.engine.Snapshot())
 	}
 }

@@ -640,5 +640,6 @@
   "stabilitySelectionTimeout": "接続または確認がタイムアウト",
   "stabilitySelectionReordered": "候補プールを再順位付け",
   "stabilitySelectionVerified": "回線と出口の確認に合格",
-  "stabilitySelectionFailed": "確認に失敗し、一時的に除外"
+  "stabilitySelectionFailed": "確認に失敗し、一時的に除外",
+  "stabilityConnectionLogging": "ChatGPT の接続を自動記録します。エラー後すぐに診断をエクスポートしてください。時系列ログを含みます。"
 }

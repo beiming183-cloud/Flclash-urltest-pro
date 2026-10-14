@@ -118,6 +118,7 @@ func handleStability(call *MethodCall, response MethodResponse) bool {
 			}
 		case markStabilityFaultMethod:
 			j, _ := outboundgroup.StabilityJournal()
+			j.MarkBusiness(j.ID("group:"+params.Group))
 			_ = j.Record(stability.Event{Event: "user_mark", Group: j.ID("group:" + params.Group)})
 			response.success(true)
 		}

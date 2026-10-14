@@ -46,15 +46,22 @@ func (s *Stable) checkTargetTLS(ctx context.Context) {
 			child, cancel := context.WithTimeout(ctx, 5*time.Second)
 			meta := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
 			meta.SetRemoteAddress(address)
+			started := time.Now()
 			conn, err := s.byID[id].DialContext(child, meta)
+			phase := "residential"
+			dialDuration := time.Since(started)
+			var tlsDuration time.Duration
 			service := "chatgpt"
 			if strings.HasPrefix(address, "android.") {
 				service = "android"
 			}
 			if err == nil {
+				phase = "tls"
 				host, _, _ := net.SplitHostPort(address)
 				tc := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+				tlsStarted := time.Now()
 				err = tc.HandshakeContext(child)
+				tlsDuration = time.Since(tlsStarted)
 				info := stableTLSInfo(service, tc.ConnectionState())
 				info.CheckedAt, info.Epoch = time.Now(), state.Epoch
 				infos = append(infos, info)
@@ -67,11 +74,11 @@ func (s *Stable) checkTargetTLS(ctx context.Context) {
 			reason := ""
 			if err != nil {
 				reason, _ = stableError(err)
-				if reason == "relay_dial_timeout" {
+				if reason == "relay_dial_timeout" && phase == "tls" {
 					reason = "tls_handshake_timeout"
 				}
 			}
-			_ = s.journal.Record(stability.Event{Event: "tls_check", Reason: reason, Group: s.groupID, Node: id, Epoch: state.Epoch, Generation: state.Generation, OK: err == nil, Phase: "tls", Service: service})
+			_ = s.journal.Record(stability.Event{Event: "tls_check", Reason: reason, Group: s.groupID, Node: id, Epoch: state.Epoch, Generation: state.Generation, OK: err == nil, Phase: phase, Service: service, DialMs: dialDuration.Milliseconds(), HandshakeMs: tlsDuration.Milliseconds()})
 		}
 		s.journal.TLS(id, infos)
 	}()

@@ -22,6 +22,7 @@ import (
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/slowdown"
 	"github.com/metacubex/mihomo/component/sniffer"
+	"github.com/metacubex/mihomo/component/stability"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/constant/features"
 	P "github.com/metacubex/mihomo/constant/provider"
@@ -531,6 +532,8 @@ func handleTCPConn(connCtx C.ConnContext) {
 	}
 	fixMetadata(metadata) // fix some metadata not set via metadata.SetRemoteAddr or metadata.SetRemoteAddress
 
+	flow := stability.BeginBusiness(metadata.RuleHost(), metadata.Process, metadata.Type == C.INNER)
+	defer func() { flow.Finish() }()
 	preHandleFailed := false
 	if err := preHandleMetadata(metadata); err != nil {
 		log.Debugln("[Metadata PreHandle] error: %s", err)
@@ -548,8 +551,11 @@ func handleTCPConn(connCtx C.ConnContext) {
 		}
 	}
 
-	// If both trials have failed, we can do nothing but give up
+	if flow == nil {
+		flow = stability.BeginBusiness(metadata.RuleHost(), metadata.Process, metadata.Type == C.INNER)
+	}
 	if preHandleFailed {
+		flow.Failed("metadata_failed", errors.New("metadata unavailable"))
 		log.Debugln("[Metadata PreHandle] failed to sniff a domain for connection %s --> %s, give up",
 			metadata.SourceDetail(), metadata.RemoteAddress())
 		return
@@ -567,10 +573,15 @@ func handleTCPConn(connCtx C.ConnContext) {
 	}
 
 	proxy, rule, err := resolveMetadata(metadata)
+	if flow == nil {
+		flow = stability.BeginBusiness(metadata.RuleHost(), metadata.Process, metadata.Type == C.INNER)
+	}
 	if err != nil {
+		flow.Failed("metadata_failed", err)
 		log.Warnln("[Metadata] parse failed: %s", err.Error())
 		return
 	}
+	flow.SelectedProxy(proxy.Name(), metadata.Process)
 
 	dialMetadata := metadata
 	if len(metadata.Host) > 0 {
@@ -587,6 +598,7 @@ func handleTCPConn(connCtx C.ConnContext) {
 	var peekLen int
 
 	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+	ctx = stability.WithBusiness(ctx, flow)
 	defer cancel()
 	remoteConn, err := retry(ctx, func(ctx context.Context) (remoteConn C.Conn, err error) {
 		remoteConn, err = proxy.DialContext(ctx, dialMetadata)
@@ -620,14 +632,17 @@ func handleTCPConn(connCtx C.ConnContext) {
 		}
 		return
 	}, func(err error) {
+		flow.Failed("retry_failed", err)
 		logMetadataErr(metadata, rule, proxy, err)
 	})
 	if err != nil {
+		flow.Failed("connection_dial_failed", err)
 		return
 	}
 	logMetadata(metadata, rule, remoteConn)
 
-	remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true)
+	flow.Open(remoteConn.Chains(), int64(peekLen))
+	remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true, flow)
 	defer func(remoteConn C.Conn) {
 		_ = remoteConn.Close()
 	}(remoteConn)
@@ -636,7 +651,11 @@ func handleTCPConn(connCtx C.ConnContext) {
 	peekMutex.Lock()
 	defer peekMutex.Unlock()
 	_ = conn.SetReadDeadline(time.Time{}) // reset
-	handleSocket(conn, remoteConn)
+	if flow == nil {
+		handleSocket(conn, remoteConn)
+	} else {
+		N.RelayObserved(conn, remoteConn, flow.CopyEnded)
+	}
 }
 
 func logMetadataErr(metadata *C.Metadata, rule C.Rule, proxy C.ProxyAdapter, err error) {

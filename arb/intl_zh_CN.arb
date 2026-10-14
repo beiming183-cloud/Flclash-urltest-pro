@@ -683,5 +683,6 @@
   "stabilitySelectionTimeout": "连接或校验超时",
   "stabilitySelectionReordered": "候选池重新排序",
   "stabilitySelectionVerified": "链路与出口验证通过",
-  "stabilitySelectionFailed": "校验失败，暂时排除"
+  "stabilitySelectionFailed": "校验失败，暂时排除",
+  "stabilityConnectionLogging": "自动记录 ChatGPT 连接，无需开启调试；出错后立即导出，内含中文时间线。"
 }
