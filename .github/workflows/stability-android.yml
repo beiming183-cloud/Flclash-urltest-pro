@@ -69,7 +69,7 @@ jobs:
           cat flutter-analysis.log
           cp pubspec.yaml /tmp/pro-pubspec.yaml
           sed -i '0,/build_assets: true/s//build_assets: false/' pubspec.yaml
-          flutter test test/widgets/proxies_stability_access_test.dart --reporter json > flutter-ui-smoke.log 2>&1 || { python3 -c 'import json; rows=[json.loads(x) for x in open("flutter-ui-smoke.log") if x.lstrip().startswith("{")]; errors=[x["error"] for x in rows if x.get("type")=="error"]; [print("::error::"+e.replace("%","%25").replace("\n","%0A").replace("\r","%0D")) for e in errors[:5]]'; exit 1; }
+          flutter test test/widgets/proxies_stability_access_test.dart --reporter json > flutter-ui-smoke.log 2>&1 || { python3 -c 'import json; rows=[json.loads(x) for x in open("flutter-ui-smoke.log") if x.lstrip().startswith("{")]; errors=[x.get("message",x.get("error","")) for x in rows if x.get("type") in ("print","error")]; e="\n".join(errors)[-20000:]; print("::error::"+e.replace("%","%25").replace("\n","%0A").replace("\r","%0D"))'; exit 1; }
           cat flutter-ui-smoke.log
           flutter test test/widgets/ test/views/proxies_list_test.dart test/views/dashboard/ --reporter expanded
           cp /tmp/pro-pubspec.yaml pubspec.yaml
