@@ -28,22 +28,17 @@ class CoreService extends CoreHandlerInterface {
     return _instance ??= CoreService._create();
   }
 
-  @visibleForTesting
-  static void resetInstance() {
-    _instance = null;
-  }
-
   factory CoreService._create() {
     final address = system.isWindows ? windowsPipeName : unixSocketPath;
     final directLauncher = DirectCoreLauncher();
 
     final lifecycle = DesktopCoreLifecycle(
       transportFactory: () => IPCCoreTransport(address: address),
-      launcherResolver: HelperLauncherResolver(
-        hasHelper: system.hasHelperService && !safeModeBuild,
+      launcherResolver: WindowsHelperLauncherResolver(
+        isWindows: system.isWindows,
         directLauncher: directLauncher,
-        helperLauncher: HelperLauncher(helperClient),
-        helperReady: () => helperClient.readiness(),
+        helperLauncher: WindowsHelperLauncher(windowsHelperClient),
+        helperReady: () => windowsHelperClient.readiness(),
       ),
       verifyPeerPid: system.isWindows,
     );

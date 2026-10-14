@@ -4,7 +4,6 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/plugins/service.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'desktop/model.dart';
 import 'interface.dart';
@@ -13,23 +12,13 @@ import 'method.dart';
 class CoreLib extends CoreHandlerInterface {
   static CoreLib? _instance;
 
-  final Service? _service;
-
   Completer<bool> _connectedCompleter = Completer<bool>();
   Future<CoreLifecycleResult>? _closeOperation;
   int _lifecycleRevision = 0;
   int _methodCallId = 0;
   bool _closed = false;
 
-  CoreLib._internal() : _service = service;
-
-  @visibleForTesting
-  CoreLib.scoped(Service this._service);
-
-  @visibleForTesting
-  static void resetInstance() {
-    _instance = null;
-  }
+  CoreLib._internal();
 
   factory CoreLib() {
     _instance ??= CoreLib._internal();
@@ -48,19 +37,19 @@ class CoreLib extends CoreHandlerInterface {
         outcome: CoreLifecycleOutcome.coalesced,
       );
     }
-    final initializationError = await _service?.init() ?? '';
+    final initializationError = await service?.init() ?? '';
     if (initializationError.isNotEmpty) {
       throw StateError(initializationError);
     }
     _connectedCompleter.complete(true);
     final syncError =
-        await _service?.syncState(
+        await service?.syncState(
           globalState.container.read(sharedStateProvider),
         ) ??
         '';
     if (syncError.isNotEmpty) {
       _connectedCompleter = Completer<bool>();
-      await _service?.shutdown();
+      await service?.shutdown();
       throw StateError(syncError);
     }
     return CoreLifecycleResult(
@@ -90,7 +79,7 @@ class CoreLib extends CoreHandlerInterface {
       );
     }
     _connectedCompleter = Completer<bool>();
-    final stopped = await _service?.shutdown() ?? true;
+    final stopped = await service?.shutdown() ?? true;
     if (!stopped) {
       throw StateError('Android Core service shutdown failed');
     }
@@ -113,13 +102,13 @@ class CoreLib extends CoreHandlerInterface {
   @override
   Future<bool> startListener() async {
     final listenerStarted = await super.startListener();
-    final serviceStarted = await _service?.start() ?? false;
+    final serviceStarted = await service?.start() ?? false;
     return listenerStarted && serviceStarted;
   }
 
   @override
   Future<bool> stopListener() async {
-    final serviceStopped = await _service?.stop() ?? false;
+    final serviceStopped = await service?.stop() ?? false;
     final listenerStopped = await super.stopListener();
     return serviceStopped && listenerStopped;
   }
@@ -129,19 +118,9 @@ class CoreLib extends CoreHandlerInterface {
     required CoreMethod method,
     Object? arguments,
     Duration? timeout,
-  }) {
-    return _invokeMethod<T>(
-      method: method,
-      arguments: arguments,
-    ).withTimeout(timeout: timeout, onTimeout: () => null);
-  }
-
-  Future<T?> _invokeMethod<T>({
-    required CoreMethod method,
-    Object? arguments,
   }) async {
     try {
-      await _connectedCompleter.future.timeout(coreConnectionWaitDuration);
+      await _connectedCompleter.future.timeout(const Duration(seconds: 10));
     } catch (error) {
       commonPrint.log(
         'Invoke method ${method.name} before connection timed out: $error',
@@ -150,9 +129,11 @@ class CoreLib extends CoreHandlerInterface {
       return null;
     }
     final id = '${++_methodCallId}';
-    final response = await _service?.invokeMethod(
-      CoreMethodCall(id: id, method: method, arguments: arguments),
-    );
+    final response = await service
+        ?.invokeMethod(
+          CoreMethodCall(id: id, method: method, arguments: arguments),
+        )
+        .withTimeout(timeout: timeout, onTimeout: () => null);
     if (response == null) {
       return null;
     }

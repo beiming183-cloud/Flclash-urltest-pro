@@ -1,18 +1,12 @@
 import 'package:animations/animations.dart';
 import 'package:fl_clash/common/common.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 
 class FadeBox extends StatelessWidget {
   final Widget child;
   final AlignmentGeometry? alignment;
-  final StackFit fit;
 
-  const FadeBox({
-    super.key,
-    required this.child,
-    this.alignment,
-    this.fit = StackFit.loose,
-  });
+  const FadeBox({super.key, required this.child, this.alignment});
 
   @override
   Widget build(BuildContext context) {
@@ -24,14 +18,13 @@ class FadeBox extends StatelessWidget {
         alignment: realAlignment,
         child: Stack(
           alignment: realAlignment,
-          fit: fit,
           children: <Widget>[...previousChildren, ?currentChild],
         ),
       ),
       transitionBuilder: (child, animation) {
         return FadeTransition(opacity: animation, child: child);
       },
-      duration: context.motionDuration(commonDuration),
+      duration: commonDuration,
       child: child,
     );
   }
@@ -53,7 +46,6 @@ class FadeThroughBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final realAlignment = alignment ?? Alignment.centerLeft;
     return PageTransitionSwitcher(
-      duration: context.motionDuration(commonDuration),
       transitionBuilder: (child, animation, secondaryAnimation) {
         return FadeThroughTransition(
           animation: animation,
@@ -147,9 +139,8 @@ class FadeScaleEnterBox extends StatefulWidget {
 }
 
 class _FadeScaleEnterBoxState extends State<FadeScaleEnterBox>
-    with SingleTickerProviderStateMixin, _EnterAnimation {
-  @override
-  late final AnimationController _controller;
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
   late Animation<double> _animation;
 
   @override
@@ -160,6 +151,7 @@ class _FadeScaleEnterBoxState extends State<FadeScaleEnterBox>
       begin: 0,
       end: 1,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _controller.forward();
   }
 
   @override
@@ -170,127 +162,12 @@ class _FadeScaleEnterBoxState extends State<FadeScaleEnterBox>
 
   @override
   Widget build(BuildContext context) {
-    if (context.disableAnimations) {
-      return widget.child;
-    }
-    return FadeScaleEnterTransition(animation: _animation, child: widget.child);
-  }
-}
-
-mixin _EnterAnimation<T extends StatefulWidget> on State<T> {
-  AnimationController get _controller;
-  bool _entered = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_entered) {
-      return;
-    }
-    _entered = true;
-    if (context.disableAnimations) {
-      _controller.value = _controller.upperBound;
-    } else {
-      _controller.forward();
-    }
-  }
-}
-
-const _defaultSlideDistance = 24.0;
-
-class FadeSlideEnterBox extends StatefulWidget {
-  final Duration delay;
-  final double distance;
-  final Axis axis;
-  final Widget child;
-
-  const FadeSlideEnterBox({
-    super.key,
-    this.delay = Duration.zero,
-    this.distance = _defaultSlideDistance,
-    this.axis = Axis.horizontal,
-    required this.child,
-  });
-
-  @override
-  State<FadeSlideEnterBox> createState() => _FadeSlideEnterBoxState();
-}
-
-class _FadeSlideEnterBoxState extends State<FadeSlideEnterBox>
-    with SingleTickerProviderStateMixin, _EnterAnimation {
-  @override
-  late final AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    final total = commonDuration + widget.delay;
-    _controller = AnimationController(vsync: this, duration: total);
-    final start = widget.delay.inMicroseconds / total.inMicroseconds;
-    _animation = start == 0
-        ? _controller.view
-        : _controller.drive(CurveTween(curve: Interval(start, 1)));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (context.disableAnimations) {
-      return widget.child;
-    }
-    return FadeSlideEnterTransition(
-      animation: _animation,
-      distance: widget.distance,
-      axis: widget.axis,
+    return AnimatedBuilder(
+      animation: _controller.view,
+      builder: (_, child) {
+        return FadeScaleEnterTransition(animation: _animation, child: child!);
+      },
       child: widget.child,
-    );
-  }
-}
-
-class FadeSlideEnterTransition extends StatelessWidget {
-  const FadeSlideEnterTransition({
-    super.key,
-    required this.animation,
-    this.distance = _defaultSlideDistance,
-    this.axis = Axis.horizontal,
-    this.child,
-  });
-
-  final Animation<double> animation;
-  final double distance;
-  final Axis axis;
-  final Widget? child;
-
-  static final Animatable<double> _fadeInTransition = CurveTween(
-    curve: const Interval(0.0, 0.25),
-  );
-  static final Animatable<double> _slideInCurve = CurveTween(
-    curve: Easing.emphasizedDecelerate,
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final begin = axis == Axis.horizontal
-        ? Offset(-distance, 0)
-        : Offset(0, distance);
-    final slide = Tween<Offset>(
-      begin: begin,
-      end: Offset.zero,
-    ).chain(_slideInCurve).animate(animation);
-    return FadeTransition(
-      opacity: _fadeInTransition.animate(animation),
-      child: AnimatedBuilder(
-        animation: slide,
-        builder: (_, child) =>
-            Transform.translate(offset: slide.value, child: child),
-        child: child,
-      ),
     );
   }
 }

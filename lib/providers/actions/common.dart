@@ -2,24 +2,14 @@ part of '../action.dart';
 
 @Riverpod(keepAlive: true)
 class CommonAction extends _$CommonAction {
-  CoreController get _core => ref.read(coreHandlerProvider);
-  bool _isUpdatingTraffic = false;
-
   @override
   void build() {}
 
   void toggleRunning() {
     final running = !ref.read(isStartProvider);
-    unawaited(
-      globalState.safeRun(
-        () => ref
-            .read(setupActionProvider.notifier)
-            .setRunning(
-              running,
-              initialize: running && !ref.read(initProvider),
-            ),
-      ),
-    );
+    ref
+        .read(setupActionProvider.notifier)
+        .setRunning(running, initialize: running && !ref.read(initProvider));
   }
 
   void updateSpeedStatistics() {
@@ -38,84 +28,26 @@ class CommonAction extends _$CommonAction {
   }
 
   Future<void> updateTraffic() async {
-    if (_isUpdatingTraffic) {
-      return;
-    }
-    _isUpdatingTraffic = true;
+    final onlyStatisticsProxy = ref.read(
+      appSettingProvider.select((state) => state.onlyStatisticsProxy),
+    );
     try {
-      final onlyStatisticsProxy = ref.read(
-        appSettingProvider.select((state) => state.onlyStatisticsProxy),
-      );
-      final [traffic, totalTraffic] = await Future.wait([
-        _readTraffic(() => _core.getTraffic(onlyStatisticsProxy)),
-        _readTraffic(() => _core.getTotalTraffic(onlyStatisticsProxy)),
-      ]);
-      if (traffic != null) {
-        ref.read(trafficsProvider.notifier).addTraffic(traffic);
-      }
-      if (totalTraffic != null) {
-        ref.read(totalTrafficProvider.notifier).value = totalTraffic;
-      }
-    } finally {
-      _isUpdatingTraffic = false;
-    }
-  }
-
-  Future<Traffic?> _readTraffic(Future<Traffic> Function() request) async {
-    try {
-      return await request();
+      final traffic = await coreController.getTraffic(onlyStatisticsProxy);
+      ref.read(trafficsProvider.notifier).addTraffic(traffic);
+      ref.read(totalTrafficProvider.notifier).value = await coreController
+          .getTotalTraffic(onlyStatisticsProxy);
     } catch (error) {
       commonPrint.log(
         'updateTraffic error: $error',
         logLevel: coreFailureLogLevel(error),
       );
-      return null;
     }
   }
 
-  Future<bool> autoCheckUpdate() async {
-    if (!ref.read(appSettingProvider).autoCheckUpdate) return false;
+  Future<void> autoCheckUpdate() async {
+    if (!ref.read(appSettingProvider).autoCheckUpdate) return;
     final res = await request.checkForUpdate();
-    await checkUpdateResultHandle(data: res);
-    return res != null;
-  }
-
-  TextSpan _releaseSpan(BuildContext context, String tagName, String? body) {
-    final textTheme = context.textTheme;
-    final version = parseReleaseChangelog(body);
-    return TextSpan(
-      text: '$tagName \n',
-      style: textTheme.headlineSmall,
-      children: version == null
-          ? [
-              TextSpan(text: '\n', style: textTheme.bodyMedium),
-              for (final submit in parseReleaseBody(body))
-                TextSpan(text: '- $submit \n', style: textTheme.bodyMedium),
-            ]
-          : _changelogSpans(context, version),
-    );
-  }
-
-  List<TextSpan> _changelogSpans(
-    BuildContext context,
-    ChangelogVersion version,
-  ) {
-    final textTheme = context.textTheme;
-    return [
-      for (final group in version.visibleGroups) ...[
-        TextSpan(
-          text:
-              '\n${changelogGroupTitle(currentAppLocalizations, group.type)}\n',
-          style: textTheme.labelLarge?.copyWith(
-            color: group.type == ChangelogType.breaking
-                ? context.colorScheme.error
-                : context.colorScheme.primary,
-          ),
-        ),
-        for (final entry in group.entries)
-          TextSpan(text: '• ${entry.text}\n', style: textTheme.bodyMedium),
-      ],
-    ];
+    checkUpdateResultHandle(data: res);
   }
 
   Future<void> checkUpdateResultHandle({
@@ -123,34 +55,36 @@ class CommonAction extends _$CommonAction {
     bool isUser = false,
   }) async {
     if (data != null) {
+      final tagName = data['tag_name'];
+      final body = data['body'];
+      final submits = utils.parseReleaseBody(body);
       final context = globalState.navigatorKey.currentContext!;
-      final res = await dialogs.showMessage(
+      final textTheme = context.textTheme;
+      final res = await globalState.showMessage(
         title: currentAppLocalizations.discoverNewVersion,
-        message: _releaseSpan(
-          context,
-          data['tag_name'] as String,
-          data['body'] as String?,
+        message: TextSpan(
+          text: '$tagName \n',
+          style: textTheme.headlineSmall,
+          children: [
+            TextSpan(text: '\n', style: textTheme.bodyMedium),
+            for (final submit in submits)
+              TextSpan(text: '- $submit \n', style: textTheme.bodyMedium),
+          ],
         ),
         confirmText: currentAppLocalizations.goDownload,
         cancelText: isUser ? null : currentAppLocalizations.noLongerRemind,
       );
       if (res == true) {
-        unawaited(
-          launchUrl(
-            Uri.parse('https://github.com/$repository/releases/latest'),
-          ),
-        );
+        launchUrl(Uri.parse('https://github.com/$repository/releases/latest'));
       } else if (!isUser && res == false) {
         ref
             .read(appSettingProvider.notifier)
             .update((state) => state.copyWith(autoCheckUpdate: false));
       }
     } else if (isUser) {
-      unawaited(
-        dialogs.showMessage(
-          title: currentAppLocalizations.checkUpdate,
-          message: TextSpan(text: currentAppLocalizations.checkUpdateError),
-        ),
+      globalState.showMessage(
+        title: currentAppLocalizations.checkUpdate,
+        message: TextSpan(text: currentAppLocalizations.checkUpdateError),
       );
     }
   }

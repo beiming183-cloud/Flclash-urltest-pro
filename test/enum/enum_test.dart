@@ -1,14 +1,13 @@
 import 'package:fl_clash/enum/enum.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 
 void main() {
   group('GroupType', () {
     test('parses clash group type aliases case-insensitively', () {
       expect(GroupType.parse('url-test'), GroupType.URLTest);
       expect(GroupType.parse('URLTEST'), GroupType.URLTest);
-      expect(GroupType.parse('StableFailover'), GroupType.URLTest);
-      expect(GroupType.parse('stable-failover'), GroupType.URLTest);
       expect(GroupType.parse('selector'), GroupType.Selector);
       expect(GroupType.parse('loadbalance'), GroupType.LoadBalance);
     });
@@ -22,7 +21,6 @@ void main() {
     test('maps display names back to enum values', () {
       expect(GroupTypeExtension.getGroupType('Selector'), GroupType.Selector);
       expect(GroupTypeExtension.getGroupType('URLTest'), GroupType.URLTest);
-      expect(GroupTypeExtension.getGroupType('StableFailover'), GroupType.URLTest);
       expect(GroupTypeExtension.getGroupType('missing'), isNull);
     });
 
@@ -41,7 +39,16 @@ void main() {
     });
   });
 
-  group('KeyboardModifier', () {
+  group('KeyboardModifierExt', () {
+    test('maps keyboard modifiers to hotkey modifiers', () {
+      expect(KeyboardModifier.alt.toHotKeyModifier(), HotKeyModifier.alt);
+      expect(
+        KeyboardModifier.control.toHotKeyModifier(),
+        HotKeyModifier.control,
+      );
+      expect(KeyboardModifier.shift.toHotKeyModifier(), HotKeyModifier.shift);
+    });
+
     test('keeps platform key variants for paired modifiers', () {
       expect(KeyboardModifier.alt.physicalKeys, [
         PhysicalKeyboardKey.altLeft,
@@ -71,7 +78,7 @@ void main() {
 
   group('RuleTarget', () {
     test('contains built-in target names', () {
-      expect(RuleTarget.baseTargets, {'DIRECT', 'REJECT', 'REJECT-DROP'});
+      expect(RuleTarget.baseTargets, {'DIRECT', 'REJECT'});
     });
   });
 

@@ -1,14 +1,15 @@
-//go:build !(android && cgo) && !windows
+//go:build !cgo && !windows
 
 package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 )
 
-func dial(arg string) (net.Conn, error) {
+func dial(arg string) (io.ReadWriteCloser, error) {
 	_, err := strconv.Atoi(arg)
 	if err != nil {
 		return net.Dial("unix", arg)

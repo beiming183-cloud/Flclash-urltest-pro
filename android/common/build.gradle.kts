@@ -16,11 +16,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    sourceSets {
-        // Unit tests live under android/tests/ instead of each module's src/test.
-        getByName("test").java.setSrcDirs(listOf("../tests/common"))
-    }
 }
 
 kotlin {
@@ -32,5 +27,7 @@ kotlin {
 dependencies {
     implementation(libs.androidx.core)
     implementation(libs.gson)
-    testImplementation(libs.junit)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics.ndk)
+    implementation(libs.firebase.analytics)
 }

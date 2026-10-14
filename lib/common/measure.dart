@@ -1,29 +1,17 @@
 import 'package:fl_clash/common/common.dart';
-import 'package:material_ui/material_ui.dart';
-
-typedef _TextMeasureKey = (
-  String?,
-  TextStyle?,
-  TextStyle?,
-  int?,
-  TextDirection?,
-  double?,
-);
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
 class Measure {
-  static const _textMeasureCacheLimit = 512;
-
   final TextScaler _textScaler;
   final BuildContext context;
   final Map<String, dynamic> _measureMap;
-  final Map<_TextMeasureKey, Size> _textSizeCache = {};
-  final Map<_TextMeasureKey, bool> _textOverflowCache = {};
 
   Measure.of(this.context, double textScaleFactor)
     : _measureMap = {},
       _textScaler = TextScaler.linear(textScaleFactor);
 
-  TextPainter _computeText(Text text, {TextStyle? style, double? maxWidth}) {
+  TextPainter computeText(Text text, {TextStyle? style, double? maxWidth}) {
     return TextPainter(
       text: TextSpan(text: text.data, style: text.style ?? style),
       maxLines: text.maxLines,
@@ -34,65 +22,14 @@ class Measure {
     )..layout(maxWidth: maxWidth ?? double.infinity);
   }
 
-  R _measuring<R>(
-    Text text,
-    TextStyle? style,
-    double? maxWidth,
-    R Function(TextPainter painter) read,
-  ) {
-    final textPainter = _computeText(text, style: style, maxWidth: maxWidth);
-    try {
-      return read(textPainter);
-    } finally {
-      textPainter.dispose();
-    }
-  }
-
-  _TextMeasureKey _measureKey(Text text, TextStyle? style, double? maxWidth) {
-    return (
-      text.data,
-      text.style,
-      style,
-      text.maxLines,
-      text.textDirection,
-      maxWidth,
-    );
-  }
-
-  R _cached<R extends Object>(
-    Map<_TextMeasureKey, R> cache,
-    _TextMeasureKey key,
-    R Function() compute,
-  ) {
-    final cachedValue = cache[key];
-    if (cachedValue != null) {
-      return cachedValue;
-    }
-    if (cache.length >= _textMeasureCacheLimit) {
-      cache.clear();
-    }
-    return cache[key] = compute();
-  }
-
   Size computeTextSize(Text text, {TextStyle? style, double? maxWidth}) {
-    return _cached(
-      _textSizeCache,
-      _measureKey(text, style, maxWidth),
-      () => _measuring(text, style, maxWidth, (painter) => painter.size),
-    );
+    final textPainter = computeText(text, style: style, maxWidth: maxWidth);
+    return textPainter.size;
   }
 
   bool computeTextIsOverflow(Text text, {TextStyle? style, double? maxWidth}) {
-    return _cached(
-      _textOverflowCache,
-      _measureKey(text, style, maxWidth),
-      () => _measuring(
-        text,
-        style,
-        maxWidth,
-        (painter) => painter.didExceedMaxLines,
-      ),
-    );
+    final textPainter = computeText(text, style: style, maxWidth: maxWidth);
+    return textPainter.didExceedMaxLines;
   }
 
   double get bodyMediumHeight {

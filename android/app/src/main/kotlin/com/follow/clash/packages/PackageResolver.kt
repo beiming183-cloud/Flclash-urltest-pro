@@ -14,26 +14,8 @@ internal class PackageResolver(
     private val packageManager: PackageManager,
     private val appPackageName: String,
 ) {
-    private val cacheLock = Any()
-
-    @Volatile
-    private var cachedPackages: List<InstalledPackage>? = null
-
-    val installedPackages: List<InstalledPackage>
-        get() = cachedPackages ?: synchronized(cacheLock) {
-            cachedPackages ?: loadPackages().also { cachedPackages = it }
-        }
-
-    val isInstalledAppsPermissionSupported: Boolean by lazy {
-        runCatching { packageManager.getPermissionInfo(GET_INSTALLED_APPS, 0) }.isSuccess
-    }
-
-    fun hasInstalledAppsPermission(): Boolean = !isInstalledAppsPermissionSupported ||
-        packageManager.checkPermission(GET_INSTALLED_APPS, appPackageName) ==
-        PackageManager.PERMISSION_GRANTED
-
-    fun invalidate() {
-        synchronized(cacheLock) { cachedPackages = null }
+    val installedPackages: List<InstalledPackage> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        loadPackages()
     }
 
     fun getChinaPackageNames(): List<String> = installedPackages
@@ -70,16 +52,16 @@ internal class PackageResolver(
     }
 
     private fun isChinaPackage(packageName: String): Boolean {
-        if (ChinaPackageMatcher.isSkipped(packageName)) {
+        if (SKIPPED_PREFIXES.any { packageName == it || packageName.startsWith("$it.") }) {
             return false
         }
-        if (ChinaPackageMatcher.matchesKnownPrefix(packageName)) {
+        if (packageName.matches(CHINA_PACKAGE_REGEX)) {
             return true
         }
 
         return runCatching {
             val packageInfo = getPackageInfo(packageName)
-            packageInfo.componentNames().any(ChinaPackageMatcher::matchesKnownPrefix) ||
+            packageInfo.componentNames().any { it.matches(CHINA_PACKAGE_REGEX) } ||
                 packageInfo.applicationInfo?.publicSourceDir?.let(::scanArchive) == true
         }.getOrDefault(false)
     }
@@ -118,22 +100,75 @@ internal class PackageResolver(
                     DexBackedDexFile.fromInputStream(null, input)
                 }
                 dexFile.classes.any { clazz ->
-                    ChinaPackageMatcher.matchesKnownPrefix(
-                        ChinaPackageMatcher.classNameOf(clazz.type),
-                    )
+                    clazz.type
+                        .removeSurrounding("L", ";")
+                        .replace('/', '.')
+                        .replace('$', '.')
+                        .matches(CHINA_PACKAGE_REGEX)
                 }
             }
     }
 
-    companion object {
-        const val GET_INSTALLED_APPS = "com.android.permission.GET_INSTALLED_APPS"
+    private companion object {
+        const val ANDROID_PACKAGE_NAME = "android"
+        const val MAX_DEX_SIZE_BYTES = 15_000_000L
 
-        private const val ANDROID_PACKAGE_NAME = "android"
-        private const val MAX_DEX_SIZE_BYTES = 15_000_000L
-
-        private val PACKAGE_INFO_FLAGS = PackageManager.GET_ACTIVITIES or
+        val PACKAGE_INFO_FLAGS = PackageManager.GET_ACTIVITIES or
             PackageManager.GET_SERVICES or
             PackageManager.GET_RECEIVERS or
             PackageManager.GET_PROVIDERS
+
+        val SKIPPED_PREFIXES = listOf(
+            "com.google",
+            "com.android.chrome",
+            "com.android.vending",
+            "com.microsoft",
+            "com.apple",
+            "com.zhiliaoapp.musically",
+        )
+
+        val CHINA_PACKAGE_REGEX = listOf(
+            "com.tencent",
+            "com.alibaba",
+            "com.umeng",
+            "com.qihoo",
+            "com.ali",
+            "com.alipay",
+            "com.amap",
+            "com.sina",
+            "com.weibo",
+            "com.vivo",
+            "com.xiaomi",
+            "com.huawei",
+            "com.taobao",
+            "com.secneo",
+            "s.h.e.l.l",
+            "com.stub",
+            "com.kiwisec",
+            "com.secshell",
+            "com.wrapper",
+            "cn.securitystack",
+            "com.mogosec",
+            "com.secoen",
+            "com.netease",
+            "com.mx",
+            "com.qq.e",
+            "com.baidu",
+            "com.bytedance",
+            "com.bugly",
+            "com.miui",
+            "com.oppo",
+            "com.coloros",
+            "com.iqoo",
+            "com.meizu",
+            "com.gionee",
+            "cn.nubia",
+            "com.oplus",
+            "andes.oplus",
+            "com.unionpay",
+            "cn.wps",
+        ).joinToString("|", prefix = "(", postfix = ").*") { prefix ->
+            Regex.escape(prefix)
+        }.toRegex()
     }
 }

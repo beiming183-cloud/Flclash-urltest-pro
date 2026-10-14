@@ -4,6 +4,8 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 val localProperties = Properties().apply {
@@ -33,7 +35,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.beiming.flclash.urltestpro"
+        applicationId = "com.follow.clash"
         minSdk = flutter.minSdkVersion
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = flutter.versionCode
@@ -77,13 +79,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-
         }
-    }
-
-    sourceSets {
-        // Unit tests live under android/tests/ instead of each module's src/test.
-        getByName("test").java.setSrcDirs(listOf("../tests/app"))
     }
 }
 
@@ -106,6 +102,7 @@ dependencies {
     implementation(libs.smali.dexlib2) {
         exclude(group = "com.google.guava", module = "guava")
     }
-    testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics.ndk)
+    implementation(libs.firebase.analytics)
 }

@@ -1,8 +1,7 @@
+import 'dart:ui';
+
 import 'package:fl_clash/common/color.dart';
-import 'package:fl_clash/common/shape.dart';
-import 'package:fl_clash/widgets/drag_back.dart';
-import 'package:fl_clash/widgets/sheet_navigator.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 const Duration _bottomSheetEnterDuration = Duration(milliseconds: 300);
@@ -83,7 +82,9 @@ class _SideSheetState extends State<SideSheet> {
     final Color surfaceTintColor = colorScheme.surfaceTint;
     final Color shadowColor = widget.shadowColor ?? Colors.transparent;
     final double elevation = widget.elevation ?? 0;
-    final ShapeBorder shape = widget.shape ?? AppShape.none;
+    final ShapeBorder shape =
+        widget.shape ??
+        RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(0));
 
     final BoxConstraints constraints =
         widget.constraints ??
@@ -362,32 +363,28 @@ class _ModalSideSheetState<T> extends State<_ModalSideSheet<T>> {
     );
     final String routeLabel = _getRouteLabel(localizations);
 
-    final route = widget.route;
     return AnimatedBuilder(
-      animation: route._presence,
-      child: route.dragBackDetector(
-        SideSheet(
-          animationController: route._animationController,
-          onClosing: () {
-            if (route.isCurrent) {
-              Navigator.pop(context);
-            }
-          },
-          builder: route.builder,
-          backgroundColor: widget.backgroundColor,
-          elevation: widget.elevation,
-          shape: widget.shape,
-          clipBehavior: widget.clipBehavior,
-          constraints: widget.constraints,
-          enableDrag: widget.enableDrag,
-          showDragHandle: widget.showDragHandle,
-        ),
+      animation: widget.route.animation!,
+      child: SideSheet(
+        animationController: widget.route._animationController,
+        onClosing: () {
+          if (widget.route.isCurrent) {
+            Navigator.pop(context);
+          }
+        },
+        builder: widget.route.builder,
+        backgroundColor: widget.backgroundColor,
+        elevation: widget.elevation,
+        shape: widget.shape,
+        clipBehavior: widget.clipBehavior,
+        constraints: widget.constraints,
+        enableDrag: widget.enableDrag,
+        showDragHandle: widget.showDragHandle,
       ),
       builder: (BuildContext context, Widget? child) {
-        final curve = route.isDragBackActive ? Curves.linear : animationCurve;
-        final double animationValue =
-            curve.transform(route.animation!.value) *
-            (1 - (route.aside?.value ?? 0));
+        final double animationValue = animationCurve.transform(
+          widget.route.animation!.value,
+        );
         return Semantics(
           scopesRoute: true,
           namesRoute: true,
@@ -413,7 +410,7 @@ class _ModalSideSheetState<T> extends State<_ModalSideSheet<T>> {
   }
 }
 
-class ModalSideSheetRoute<T> extends PopupRoute<T> with DragBackRouteMixin<T> {
+class ModalSideSheetRoute<T> extends PopupRoute<T> {
   ModalSideSheetRoute({
     required this.builder,
     this.capturedThemes,
@@ -433,17 +430,10 @@ class ModalSideSheetRoute<T> extends PopupRoute<T> with DragBackRouteMixin<T> {
     this.transitionAnimationController,
     this.anchorPoint,
     this.useSafeArea = false,
-    this.aside,
+    super.filter,
   });
 
   final WidgetBuilder builder;
-
-  /// Slides the sheet off, scrim and all, as it runs to 1 without closing it.
-  final Animation<double>? aside;
-
-  late final Animation<double> _presence = aside == null
-      ? animation!
-      : _SidePresence(animation!, aside!);
 
   final CapturedThemes? capturedThemes;
 
@@ -554,7 +544,7 @@ class ModalSideSheetRoute<T> extends PopupRoute<T> with DragBackRouteMixin<T> {
   Widget buildModalBarrier() {
     if (barrierColor.a != 0 && !offstage) {
       assert(barrierColor != barrierColor.opacity0);
-      final Animation<Color?> color = _presence.drive(
+      final Animation<Color?> color = animation!.drive(
         ColorTween(
           begin: barrierColor.opacity0,
           end: barrierColor,
@@ -599,18 +589,20 @@ Future<T?> showModalSideSheet<T>({
   RouteSettings? routeSettings,
   AnimationController? transitionAnimationController,
   Offset? anchorPoint,
-  Animation<double>? aside,
+  ImageFilter? filter,
 }) {
   assert(debugCheckHasMediaQuery(context));
   assert(debugCheckHasMaterialLocalizations(context));
 
-  final navigator = useRootNavigator
-      ? Navigator.of(context, rootNavigator: true)
-      : sheetNavigatorOf(context);
+  final NavigatorState navigator = Navigator.of(
+    context,
+    rootNavigator: useRootNavigator,
+  );
   final MaterialLocalizations localizations = MaterialLocalizations.of(context);
   return navigator.push(
     ModalSideSheetRoute<T>(
       builder: builder,
+      filter: filter,
       capturedThemes: InheritedTheme.capture(
         from: context,
         to: navigator.context,
@@ -633,15 +625,6 @@ Future<T?> showModalSideSheet<T>({
       transitionAnimationController: transitionAnimationController,
       anchorPoint: anchorPoint,
       useSafeArea: useSafeArea,
-      aside: aside,
     ),
   );
-}
-
-class _SidePresence extends CompoundAnimation<double> {
-  _SidePresence(Animation<double> entrance, Animation<double> aside)
-    : super(first: entrance, next: aside);
-
-  @override
-  double get value => first.value * (1 - next.value);
 }

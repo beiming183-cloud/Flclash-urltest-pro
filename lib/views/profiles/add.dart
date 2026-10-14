@@ -1,102 +1,89 @@
-import 'dart:async';
-
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/pages/scan.dart';
 import 'package:fl_clash/providers/action.dart';
-import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:material_ui/material_ui.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 
-void showAddProfilePage() {
-  final context = globalState.navigatorKey.currentState!.context;
-  showExtend(
-    context,
-    builder: (context) => CommonScaffold(
-      title: context.appLocalizations.addProfile,
-      body: AddProfileView(context: context),
-    ),
-  );
-}
-
-class AddProfileView extends ConsumerWidget {
+class AddProfileView extends StatelessWidget {
   final BuildContext context;
 
   const AddProfileView({super.key, required this.context});
 
-  Future<void> _handleAddProfileFormFile(WidgetRef ref) async {
-    unawaited(ref.read(profilesActionProvider.notifier).addProfileFormFile());
+  Future<void> _handleAddProfileFormFile() async {
+    globalState.container
+        .read(profilesActionProvider.notifier)
+        .addProfileFormFile();
   }
 
-  Future<void> _toScan(WidgetRef ref) async {
-    final profilesAction = ref.read(profilesActionProvider.notifier);
+  Future<void> _handleAddProfileFormURL(String url) async {
+    globalState.container
+        .read(profilesActionProvider.notifier)
+        .addProfileFormURL(url);
+  }
+
+  Future<void> _toScan() async {
     if (system.isDesktop) {
-      unawaited(profilesAction.addProfileFormQrCode());
+      globalState.container
+          .read(profilesActionProvider.notifier)
+          .addProfileFormQrCode();
       return;
     }
     final url = await BaseNavigator.push(context, const ScanPage());
     if (url != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(profilesAction.addProfileFormURL(url));
+        _handleAddProfileFormURL(url);
       });
     }
   }
 
-  Future<void> _toAdd(WidgetRef ref) async {
-    final profilesAction = ref.read(profilesActionProvider.notifier);
+  Future<void> _toAdd() async {
     final appLocalizations = context.appLocalizations;
-    final reservedLabels = ref.read(
-      appProviderLabelsProvider(ProviderKind.proxy),
+    final url = await globalState.showCommonDialog<String>(
+      child: InputDialog(
+        autovalidateMode: AutovalidateMode.onUnfocus,
+        title: appLocalizations.importFromURL,
+        labelText: appLocalizations.url,
+        value: '',
+        inputFormatters: TextInputLimits.limit(TextInputLimits.url),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return appLocalizations.emptyTip('').trim();
+          }
+          if (!value.isUrl) {
+            return appLocalizations.urlTip('').trim();
+          }
+          return null;
+        },
+      ),
     );
-    final res = await dialogs.showNamedUrlInput(
-      title: appLocalizations.importFromURL,
-      labelValidator: (value) {
-        if (reservedLabels.contains(value?.trim())) {
-          return appLocalizations.existsTip(appLocalizations.name);
-        }
-        return null;
-      },
-      urlValidator: (value) {
-        if (value == null || value.isEmpty) {
-          return appLocalizations.emptyTip('').trim();
-        }
-        if (!value.isUrl) {
-          return appLocalizations.urlTip('').trim();
-        }
-        return null;
-      },
-    );
-    if (res != null) {
-      unawaited(profilesAction.addProfileFormURL(res.url, label: res.label));
+    if (url != null) {
+      _handleAddProfileFormURL(url);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(context) {
     final appLocalizations = context.appLocalizations;
     return ListView(
-      padding: EdgeInsets.only(top: context.contentTopPadding, bottom: 16),
       children: [
         ListItem(
-          leading: const GlyphIcon(AppGlyphs.qrCode),
+          leading: const Icon(Icons.qr_code_sharp),
           title: Text(appLocalizations.qrcode),
           subtitle: Text(appLocalizations.qrcodeDesc),
-          onTap: () => _toScan(ref),
+          onTap: _toScan,
         ),
         ListItem(
-          leading: const GlyphIcon(AppGlyphs.importFile),
+          leading: const Icon(Icons.upload_file_sharp),
           title: Text(appLocalizations.file),
           subtitle: Text(appLocalizations.fileDesc),
-          onTap: () => _handleAddProfileFormFile(ref),
+          onTap: _handleAddProfileFormFile,
         ),
         ListItem(
-          leading: const GlyphIcon(AppGlyphs.cloudDownload),
+          leading: const Icon(Icons.cloud_download_sharp),
           title: Text(appLocalizations.url),
           subtitle: Text(appLocalizations.urlDesc),
-          onTap: () => _toAdd(ref),
+          onTap: _toAdd,
         ),
       ],
     );
@@ -151,7 +138,10 @@ class _URLFormDialogState extends State<URLFormDialog> {
               },
               onEditingComplete: _handleAddProfileFormURL,
               controller: _urlController,
-              decoration: InputDecoration(labelText: appLocalizations.url),
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: appLocalizations.url,
+              ),
             ),
           ],
         ),

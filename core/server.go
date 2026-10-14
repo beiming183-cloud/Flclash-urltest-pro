@@ -1,46 +1,21 @@
-//go:build !(android && cgo)
+//go:build !cgo
 
 package main
 
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sync"
-	"sync/atomic"
-	"time"
 )
-
-type ipcConn interface {
-	io.ReadWriteCloser
-	SetWriteDeadline(t time.Time) error
-}
 
 var (
-	conn    ipcConn
-	connMu  sync.Mutex
-	writeMu sync.Mutex
+	conn   io.ReadWriteCloser
+	connMu sync.Mutex
 )
 
-const (
-	maxIPCFrameSize = 64 * 1024 * 1024
-	ipcWriteTimeout = 10 * time.Second
-)
-
-var deliveryFailureReported atomic.Bool
-
-// logDeliveryError must not reach the mihomo logger: a log event is published
-// to the log subscriber, batched, and handed back to send, so reporting a send
-// failure through it feeds the failure straight back into itself.
-func logDeliveryError(format string, args ...any) {
-	if deliveryFailureReported.Swap(true) {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "[ERROR] "+format+"\n", args...)
-}
+const maxIPCFrameSize = 64 * 1024 * 1024
 
 func (response MethodResponse) send() {
 	data, err := response.JSON()
@@ -51,81 +26,48 @@ func (response MethodResponse) send() {
 	send(data)
 }
 
-func deliverEvent(data []byte) {
+func sendMessageBatch(messages []Message) {
+	arguments, err := json.Marshal(messages)
+	if err != nil {
+		logError("Message batch marshal error: %v", err)
+		return
+	}
+	call := MethodCall{
+		Method:    messageMethod,
+		Arguments: arguments,
+	}
+	data, err := json.Marshal(call)
+	if err != nil {
+		logError("MethodCall marshal error: method=%s err=%v", call.Method, err)
+		return
+	}
 	send(data)
 }
 
-// The desktop core exits with its host connection, so it is always heard.
-func hasEventListener() bool {
-	return true
-}
-
-func writeFrame(w io.Writer, data []byte) (int, error) {
+func writeFrame(w io.Writer, data []byte) error {
 	if len(data) > maxIPCFrameSize {
-		return 0, fmt.Errorf("IPC frame exceeds %d bytes", maxIPCFrameSize)
+		return fmt.Errorf("IPC frame exceeds %d bytes", maxIPCFrameSize)
 	}
 	lenBuf := [4]byte{}
 	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(data)))
-	written, err := writeAll(w, lenBuf[:])
-	if err != nil {
-		return written, err
+	if err := writeAll(w, lenBuf[:]); err != nil {
+		return err
 	}
-	n, err := writeAll(w, data)
-	return written + n, err
+	return writeAll(w, data)
 }
 
-type resumingWriter struct {
-	conn    ipcConn
-	written int
-}
-
-func (writer *resumingWriter) Write(data []byte) (int, error) {
-	accepted := 0
-	for {
-		n, err := writer.conn.Write(data[accepted:])
-		accepted += n
-		writer.written += n
-		if err == nil {
-			return accepted, nil
-		}
-		if accepted >= len(data) || !writer.resume(err) {
-			return accepted, err
-		}
-	}
-}
-
-// A half-written frame is only in sync while this process keeps writing it,
-// and a host the OS has suspended (Windows Modern Standby freezes the app but
-// not a service's child) drains again whenever it wakes, so a stall is waited
-// out for as long as it lasts. A dead host surfaces as a hard error instead.
-func (writer *resumingWriter) resume(err error) bool {
-	if writer.written == 0 || !isWriteTimeout(err) {
-		return false
-	}
-	return writer.conn.SetWriteDeadline(time.Now().Add(ipcWriteTimeout)) == nil
-}
-
-// go-winio reports an expired deadline as its own ErrTimeout, which does not
-// match os.ErrDeadlineExceeded; Timeout() is the contract every pipe shares.
-func isWriteTimeout(err error) bool {
-	var timeout interface{ Timeout() bool }
-	return errors.As(err, &timeout) && timeout.Timeout()
-}
-
-func writeAll(w io.Writer, data []byte) (int, error) {
-	written := 0
+func writeAll(w io.Writer, data []byte) error {
 	for len(data) > 0 {
 		n, err := w.Write(data)
-		written += n
 		if err != nil {
-			return written, err
+			return err
 		}
 		if n == 0 {
-			return written, io.ErrShortWrite
+			return io.ErrShortWrite
 		}
 		data = data[n:]
 	}
-	return written, nil
+	return nil
 }
 
 func readFrame(r io.Reader) ([]byte, error) {
@@ -145,78 +87,53 @@ func readFrame(r io.Reader) ([]byte, error) {
 }
 
 func send(data []byte) {
-	writeMu.Lock()
-	defer writeMu.Unlock()
-
+	if conn == nil {
+		logError("send conn nil")
+		return
+	}
 	connMu.Lock()
-	c := conn
-	connMu.Unlock()
-
-	if c == nil {
-		logDeliveryError("send conn nil")
-		return
+	defer connMu.Unlock()
+	if err := writeFrame(conn, data); err != nil {
+		logError("server write error: %v", err)
 	}
-	if err := c.SetWriteDeadline(time.Now().Add(ipcWriteTimeout)); err != nil {
-		logDeliveryError("server write deadline error: %v", err)
-	}
-	written, err := writeFrame(&resumingWriter{conn: c}, data)
-	if err == nil {
-		deliveryFailureReported.Store(false)
-		return
-	}
-	if written == 0 {
-		logDeliveryError("server write error, dropped one frame: %v", err)
-		return
-	}
-	logDeliveryError("server write error after %d bytes: %v", written, err)
-	connMu.Lock()
-	if conn == c {
-		conn = nil
-	}
-	connMu.Unlock()
-	_ = c.Close()
 }
 
 func startServer(arg string) {
-	dialed, err := dial(arg)
+	var err error
+	conn, err = dial(arg)
 	if err != nil {
 		panic(err.Error())
 	}
-	serve(dialed)
-}
 
-func serve(dialed ipcConn) {
-	defer releaseOnExit()
-	defer func() {
-		connMu.Lock()
-		c := conn
-		conn = nil
-		connMu.Unlock()
-		if c != nil {
-			_ = c.Close()
-		}
-	}()
-
-	connMu.Lock()
-	conn = dialed
-	deliveryFailureReported.Store(false)
-	connMu.Unlock()
+	defer func(conn io.Closer) {
+		_ = conn.Close()
+	}(conn)
 
 	for {
-		data, err := readFrame(dialed)
+		data, err := readFrame(conn)
 		if err != nil {
 			if err != io.EOF {
 				logError("server read error: %v", err)
 			}
 			return
 		}
-
 		call := &MethodCall{}
-		if err := json.Unmarshal(data, call); err != nil {
+
+		err = json.Unmarshal(data, call)
+
+		if err != nil {
 			logError("server unmarshal error: %v (data: %q)", err, data)
 			continue
 		}
 
-		dispatchMethodCall(call, newMethodResponse(call.ID, nil))
+		response := MethodResponse{
+			ID: call.ID,
+		}
+
+		go handleMethodCall(call, response)
 	}
+}
+
+func handlePlatformMethodCall(call *MethodCall, response MethodResponse) bool {
+	return false
 }

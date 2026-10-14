@@ -1,13 +1,13 @@
-//go:build windows && !(android && cgo)
+//go:build windows && !cgo
 
 package main
 
 import (
-	"net"
+	"io"
 
 	"github.com/Microsoft/go-winio"
 )
 
-func dial(path string) (net.Conn, error) {
+func dial(path string) (io.ReadWriteCloser, error) {
 	return winio.DialPipe(path, nil)
 }

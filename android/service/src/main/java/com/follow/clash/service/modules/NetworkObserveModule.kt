@@ -9,8 +9,6 @@ import android.net.NetworkCapabilities.TRANSPORT_SATELLITE
 import android.net.NetworkCapabilities.TRANSPORT_USB
 import android.net.NetworkRequest
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import androidx.core.content.getSystemService
 import com.follow.clash.core.Core
 import java.net.Inet4Address
@@ -32,9 +30,7 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     private val connectivity by lazy {
         service.getSystemService<ConnectivityManager>()
     }
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var currentDnsList = listOf<String>()
-    private val stabilityNetworkObserver = StabilityNetworkObserver()
 
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -48,44 +44,23 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             networkInfos[network] = NetworkInfo()
-            scheduleUpdateDns()
+            updateDns()
         }
 
         override fun onLosing(network: Network, maxMsToLive: Int) {
-            val info = networkInfos[network] ?: return
-            info.losingUntilMillis = System.currentTimeMillis() + maxMsToLive
-            scheduleUpdateDns()
-            if (maxMsToLive > 0) {
-                mainHandler.postDelayed({
-                    if (networkInfos.containsKey(network)) {
-                        updateDns()
-                    }
-                }, maxMsToLive.toLong() + 50)
-            }
+            networkInfos[network]?.losingUntilMillis = System.currentTimeMillis() + maxMsToLive
+            updateDns()
         }
 
         override fun onLost(network: Network) {
             networkInfos.remove(network)
-            scheduleUpdateDns()
-        }
-
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            scheduleUpdateDns()
+            updateDns()
         }
 
         override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
             networkInfos[network]?.dnsList = linkProperties.dnsServers
-            scheduleUpdateDns()
+            updateDns()
         }
-    }
-
-    private val updateDnsTask = Runnable(::updateDns)
-
-    // A switch arrives as a burst, and a network that just came up has no DNS
-    // until its link properties follow; the Core flushes its cache per list.
-    private fun scheduleUpdateDns() {
-        mainHandler.removeCallbacks(updateDnsTask)
-        mainHandler.postDelayed(updateDnsTask, DNS_UPDATE_DELAY_MILLIS)
     }
 
     override fun start() {
@@ -114,21 +89,8 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 
     @Synchronized
     private fun updateDns() {
-        val selected = networkInfos.asSequence().minByOrNull(::networkPriority)
-        val capabilities = selected?.key?.let { connectivity?.getNetworkCapabilities(it) }
-        // Android's captive-portal validation may fail while the proxy is reachable.
-        // The core's budgeted TLS and fixed-exit checks determine candidate eligibility.
-        val snapshot = stabilityNetworkObserver.update(
-            networkKey = selected?.key?.networkHandle,
-            internet = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
-            notVpn = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == true,
-            notSuspended = capabilities != null && (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)),
-        )
-        if (snapshot != null) {
-            Core.invokeMethod("{\"method\":\"stabilityNetworkChanged\",\"arguments\":{\"networkKey\":\"${snapshot.networkKey}\",\"online\":${snapshot.online}}}") { }
-        }
-        val dnsList = selected
+        val dnsList = networkInfos.asSequence()
+            .minByOrNull(::networkPriority)
             ?.value
             ?.dnsList
             .orEmpty()
@@ -142,7 +104,6 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
 
     override fun stop() {
-        mainHandler.removeCallbacksAndMessages(null)
         try {
             connectivity?.unregisterNetworkCallback(callback)
         } finally {
@@ -153,7 +114,6 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 }
 
 private const val DNS_PORT = 53
-private const val DNS_UPDATE_DELAY_MILLIS = 200L
 
 private fun InetAddress.asSocketAddressText(port: Int): String = when (this) {
     is Inet6Address -> "[$hostAddress]:$port"

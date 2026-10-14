@@ -51,7 +51,6 @@ _Profile _$ProfileFromJson(Map<String, dynamic> json) => _Profile(
       $enumDecodeNullable(_$OverwriteTypeEnumMap, json['overwriteType']) ??
       OverwriteType.standard,
   scriptId: (json['scriptId'] as num?)?.toInt(),
-  matchTarget: json['matchTarget'] as String?,
   order: (json['order'] as num?)?.toInt(),
 );
 
@@ -68,7 +67,6 @@ Map<String, dynamic> _$ProfileToJson(_Profile instance) => <String, dynamic>{
   'unfoldSet': instance.unfoldSet.toList(),
   'overwriteType': _$OverwriteTypeEnumMap[instance.overwriteType]!,
   'scriptId': instance.scriptId,
-  'matchTarget': instance.matchTarget,
   'order': instance.order,
 };
 

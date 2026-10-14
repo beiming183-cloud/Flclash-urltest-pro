@@ -109,38 +109,24 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
     });
   }
 
-  void _putRulesWithBatch(Batch batch, Iterable<Rule> rules) {
-    batch.insertAllOnConflictUpdate(
-      this.rules,
-      rules.map((item) => item.toCompanion()),
-    );
-  }
-
-  void _putLinksWithBatch(Batch batch, Iterable<ProfileRuleLink> links) {
-    final keys = indexing.generateNKeys(links.length);
-    batch.insertAllOnConflictUpdate(
-      profileRuleLinks,
-      links.mapIndexed((index, item) => item.toCompanion(keys[index])),
-    );
-  }
-
-  void mergeWithBatch(
-    Batch batch,
-    Iterable<Rule> rules,
-    Iterable<ProfileRuleLink> links,
-  ) {
-    _putRulesWithBatch(batch, rules);
-    _putLinksWithBatch(batch, links);
-  }
-
   void restoreWithBatch(
     Batch batch,
     Iterable<Rule> rules,
     Iterable<ProfileRuleLink> links,
   ) {
-    batch.deleteAll(profileRuleLinks);
-    batch.deleteAll(this.rules);
-    mergeWithBatch(batch, rules, links);
+    batch.insertAllOnConflictUpdate(
+      this.rules,
+      rules.map((item) => item.toCompanion()),
+    );
+    final ruleIds = rules.map((item) => item.id);
+    batch.deleteWhere(this.rules, (t) => t.id.isNotIn(ruleIds));
+    final keys = indexing.generateNKeys(links.length);
+    batch.insertAllOnConflictUpdate(
+      profileRuleLinks,
+      links.mapIndexed((index, item) => item.toCompanion(keys[index])),
+    );
+    final linkKeys = links.map((item) => item.key);
+    batch.deleteWhere(profileRuleLinks, (t) => t.id.isNotIn(linkKeys));
   }
 
   Future<void> delRules(Iterable<int> ruleIds) {
@@ -160,7 +146,7 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
   }
 
   Future<void> putProfileDisabledRule(int profileId, Rule rule) {
-    return _put(rule, profileId: profileId, scene: RuleScene.disabled);
+    return _put(rule, profileId: profileId, scene: RuleScene.added);
   }
 
   void setCustomRulesWithBatch(int profileId, Batch b, Iterable<Rule> rules) {
@@ -240,55 +226,6 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
     return stmt.write(RulesCompanion(ruleTarget: Value(newName)));
   }
 
-  Future<int> renameCustomRuleProvider(
-    Iterable<int> profileIds, {
-    required String oldName,
-    required String newName,
-  }) async {
-    if (profileIds.isEmpty) {
-      return 0;
-    }
-    final stmt = rules.update()
-      ..where(
-        (t) =>
-            t.ruleAction.equalsValue(RuleAction.RULE_SET) &
-            t.ruleProvider.equals(oldName),
-      )
-      ..where(
-        (t) => t.id.isInQuery(
-          selectOnly(profileRuleLinks)
-            ..addColumns([profileRuleLinks.ruleId])
-            ..where(
-              profileRuleLinks.profileId.isIn(profileIds) &
-                  profileRuleLinks.scene.equalsValue(RuleScene.custom),
-            ),
-        ),
-      );
-    return stmt.write(RulesCompanion(ruleProvider: Value(newName)));
-  }
-
-  Future<Set<int>> profileIdsUsingCustomRuleProvider(String provider) async {
-    final query =
-        selectOnly(rules, distinct: true).join([
-            innerJoin(
-              profileRuleLinks,
-              profileRuleLinks.ruleId.equalsExp(rules.id),
-              useColumns: false,
-            ),
-          ])
-          ..addColumns([profileRuleLinks.profileId])
-          ..where(
-            rules.ruleAction.equalsValue(RuleAction.RULE_SET) &
-                rules.ruleProvider.equals(provider) &
-                profileRuleLinks.scene.equalsValue(RuleScene.custom) &
-                profileRuleLinks.profileId.isNotNull(),
-          );
-    return {
-      for (final row in await query.get())
-        row.read(profileRuleLinks.profileId)!,
-    };
-  }
-
   JoinedSelectStatement<HasResultSet, dynamic> _getSelectStatement({
     int? profileId,
     RuleScene? scene,
@@ -351,20 +288,8 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
     });
   }
 
-  Future<void> _delAll(Iterable<int> ruleIds) {
-    return batch((b) {
-      rules.deleteInChunks(b, ruleIds, (t, chunk) => t.id.isIn(chunk));
-    });
-  }
-
-  Future<void> delUnlinkedRules() {
-    return rules.remove(_isUnlinked);
-  }
-
-  Expression<bool> _isUnlinked(Rules rule) {
-    final linkedIds = selectOnly(profileRuleLinks)
-      ..addColumns([profileRuleLinks.ruleId]);
-    return rule.id.isNotInQuery(linkedIds);
+  Future<void> _delAll(Iterable<int> ruleIds) async {
+    await rules.deleteWhere((t) => t.id.isIn(ruleIds));
   }
 
   void _setWithBatch(
@@ -400,7 +325,11 @@ class RulesDao extends DatabaseAccessor<Database> with _$RulesDaoMixin {
       ),
     );
 
-    b.deleteWhere(this.rules, _isUnlinked);
+    b.deleteWhere(this.rules, (r) {
+      final linkedIds = selectOnly(profileRuleLinks);
+      linkedIds.addColumns([profileRuleLinks.ruleId]);
+      return r.id.isNotInQuery(linkedIds);
+    });
   }
 }
 

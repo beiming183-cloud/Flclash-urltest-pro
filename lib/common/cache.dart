@@ -50,6 +50,6 @@ extension CacheManagerExt on CacheManager {
         );
       }
     }
-    unawaited(streamController.close());
+    streamController.close();
   }
 }

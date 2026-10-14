@@ -1,8 +1,6 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/theme.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/icons/icons.dart';
-import 'package:fl_clash/views/dashboard/widget_registry.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -11,11 +9,10 @@ import 'package:fl_clash/views/access.dart';
 import 'package:fl_clash/views/dashboard/dashboard.dart';
 import 'package:fl_clash/views/logs.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../helpers/glyph_finders.dart';
 
 void main() {
   testWidgets('back layers are consumed from inner to outer', (tester) async {
@@ -185,7 +182,9 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: const [
             AppLocalizations.delegate,
-            ...GlobalMaterialLocalizations.delegates,
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.delegate.supportedLocales,
           home: CommonPopScope(
@@ -203,7 +202,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byGlyph(AppGlyphs.search));
+    await tester.tap(find.byIcon(Icons.search));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
 
@@ -229,7 +228,9 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: const [
             AppLocalizations.delegate,
-            ...GlobalMaterialLocalizations.delegates,
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.delegate.supportedLocales,
           home: _PageActivityTestScope(
@@ -240,7 +241,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byGlyph(AppGlyphs.search));
+    await tester.tap(find.byIcon(Icons.search));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
 
@@ -307,7 +308,9 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 301));
 
-    await tester.tap(find.byGlyph(AppGlyphs.search));
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.search));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
 
@@ -358,7 +361,7 @@ void main() {
           const DashboardState(
             dashboardWidgets: [
               DashboardWidget.networkSpeed,
-              DashboardWidget.outboundMode,
+              DashboardWidget.outboundModeV2,
             ],
           ),
         ),
@@ -385,22 +388,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     final deleteButton = find.ancestor(
-      of: find.byGlyph(AppGlyphs.close).first,
+      of: find.byIcon(Icons.close).first,
       matching: find.byType(IconButton),
     );
     tester.widget<IconButton>(deleteButton).onPressed!();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pump();
-    expect(tester.state<SuperGridState>(find.byType(SuperGrid)).items, [
-      DashboardWidget.outboundMode.widget,
-    ]);
+    expect(
+      tester.state<SuperGridState>(find.byType(SuperGrid)).snapshotChildren,
+      [DashboardWidget.outboundModeV2.widget],
+    );
     await tester.binding.handlePopRoute();
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.byKey(const ValueKey('edit-icon')), findsOneWidget);
     expect(container.read(appSettingProvider).dashboardWidgets, [
-      DashboardWidget.outboundMode,
+      DashboardWidget.outboundModeV2,
     ]);
   });
 }
@@ -415,7 +419,9 @@ class _DashboardTestApp extends StatelessWidget {
     return MaterialApp(
       localizationsDelegates: const [
         AppLocalizations.delegate,
-        ...GlobalMaterialLocalizations.delegates,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.delegate.supportedLocales,
       builder: (context, child) {

@@ -1,4 +1,4 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 
 enum ExternalDismissibleEffect { normal, resize }
 
@@ -99,11 +99,10 @@ class _ExternalDismissibleState extends State<ExternalDismissible>
     _isDismissing = true;
     updateKeepAlive();
     await _controller.forward();
-    _isDismissing = false;
-    if (!mounted) {
-      return;
+    if (mounted && widget.onDismissed != null) {
+      widget.onDismissed!();
     }
-    widget.onDismissed?.call();
+    _isDismissing = false;
     updateKeepAlive();
   }
 

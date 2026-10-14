@@ -8,10 +8,6 @@ typedef MigrationTransform =
     Future<MigrationData> Function(Map<String, Object?> configMap);
 
 abstract interface class MigrationStore {
-  /// False when the backing store could not be opened at all, as opposed to a
-  /// store that opened but holds nothing.
-  Future<bool> get isAvailable;
-
   Future<Map<String, Object?>?> getConfigMap();
 
   Future<int> getVersion();
@@ -31,9 +27,6 @@ class _AppMigrationStore implements MigrationStore {
   const _AppMigrationStore();
 
   @override
-  Future<bool> get isAvailable => preferences.isInit;
-
-  @override
   Future<Map<String, Object?>?> getConfigMap() => preferences.getConfigMap();
 
   @override
@@ -51,7 +44,6 @@ class _AppMigrationStore implements MigrationStore {
       data.rules,
       data.links,
       data.proxyGroups,
-      clashProviders: data.clashProviders,
     );
   }
 
@@ -131,12 +123,7 @@ class Migration {
     config = Config.realFromJson(data.configMap);
     await _store.restore(data);
     if (!await _store.saveConfig(config)) {
-      // An unopenable store is reported later by the corrupt-cache dialog,
-      // which offers a reset; failing here would hide that path.
-      if (await _store.isAvailable) {
-        throw StateError('Failed to save migrated preferences');
-      }
-      return config;
+      throw StateError('Failed to save migrated preferences');
     }
     if (shouldClearClashConfig) {
       await _store.clearClashConfig();

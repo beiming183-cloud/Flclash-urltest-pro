@@ -1,43 +1,139 @@
-# FlClash URLTest Pro — 稳定切换实验版
+<div>
 
-目标：住宅出口固定，机场中继可以改变；从完整链路中选出三个稳定候选，故障时快速尝试备用，并输出体积受控的诊断日志。
+[**简体中文**](README_zh_CN.md)
 
-**状态：arm64测试APK已构建，Go/Flutter/Android自动化检查通过。稳定组、建立阶段备用重试、原生调度、诊断和Flutter界面已接入，原交接包“尚未接入”的状态已更新。真机网络及ChatGPT验收仍待执行，不能据此认定用户网络故障已修复。**
+</div>
 
-[下载测试APK包](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267/artifacts/11837316516) · [安装与配置](docs/stability-pro/QUICKSTART.zh-CN.md) · [实际进度与验收边界](docs/stability-pro/PROGRESS.zh-CN.md)
+## FlClash
 
-下载ZIP后安装其中的FlClash-URLTest-Pro-arm64-test.apk。测试包使用独立ID（.dev），可与官方版并存；自定义稳定策略需要配置stable-failover组。
+[![Downloads](https://img.shields.io/github/downloads/chen08209/FlClash/total?style=flat-square&logo=github)](https://github.com/chen08209/FlClash/releases/)[![Last Version](https://img.shields.io/github/release/chen08209/FlClash/all.svg?style=flat-square)](https://github.com/chen08209/FlClash/releases/)[![License](https://img.shields.io/github/license/chen08209/FlClash?style=flat-square)](LICENSE)
 
-请从 [云端任务入口](docs/stability-pro/START_HERE.zh-CN.md) 开始。原项目说明保留在 [README_UPSTREAM.md](README_UPSTREAM.md)。
+[![Channel](https://img.shields.io/badge/Telegram-Channel-blue?style=flat-square&logo=telegram)](https://t.me/FlClash)
 
-| 文件 | 用途 |
-| --- | --- |
-| [产品与算法规格](docs/stability-pro/SPEC.zh-CN.md) | 分层候选池、固定出口、故障处理、测试预算 |
-| [接入地图](docs/stability-pro/INTEGRATION.zh-CN.md) | Go / Flutter / Android 的修改边界和阶段任务 |
-| [证书诊断](docs/stability-pro/SSL.zh-CN.md) | 区分证书错误、握手中止、超时和目标站故障 |
-| [日志及导出](docs/stability-pro/LOGGING.zh-CN.md) | 4 MiB 轮转、10 分钟调试、最大 2 MiB 导出包 |
-| [构建与验收](docs/stability-pro/BUILD_AND_ACCEPTANCE.zh-CN.md) | 独立 APK、云端构建、故障注入和手机验收 |
-| [参考实现](reference/stability_pro/engine.py) | 无网络副作用的状态机与同次拨号重试模型 |
-| [日志参考实现](reference/stability_pro/diagnostics.py) | 白名单字段、轮转与 ZIP 导出 |
-| [脱敏案例](fixtures/stability-pro/observed-incident.json) | 用户手机日志实际能证明和不能证明的事实 |
-| [版本来源](docs/stability-pro/UPSTREAM.md) | 上游应用和内核的精确版本、许可证 |
+A multi-platform proxy client based on ClashMeta, simple and easy to use, open-source and ad-free.
 
-## 运行参考测试
+on Desktop:
+<p style="text-align: center;">
+    <img alt="desktop" src="snapshots/desktop.gif">
+</p>
 
-Python 3.10+，无需第三方依赖：
+on Mobile:
+<p style="text-align: center;">
+    <img alt="mobile" src="snapshots/mobile.gif">
+</p>
 
-```sh
-python -m unittest discover -s reference/tests -v
-python scripts/verify_handoff.py
-python reference/demo.py --output ./test-results/demo
+## Features
+
+✈️ Multi-platform: Android, Windows, macOS and Linux
+
+💻 Adaptive multiple screen sizes, Multiple color themes available
+
+💡 Based on Material You Design, [Surfboard](https://github.com/getsurfboard/surfboard)-like UI
+
+☁️ Supports data sync via WebDAV
+
+✨ Support subscription link, Dark mode
+
+## Use
+
+### Linux
+
+⚠️ Make sure to install the following dependencies before using them
+
+   ```bash
+    sudo apt-get install libayatana-appindicator3-dev
+    sudo apt-get install libkeybinder-3.0-dev
+   ```
+
+### Android
+
+Support the following actions
+
+   ```bash
+    com.follow.clash.action.START
+    
+    com.follow.clash.action.STOP
+    
+    com.follow.clash.action.TOGGLE
+   ```
+
+## Download
+
+<a href="https://chen08209.github.io/FlClash-fdroid-repo/repo?fingerprint=789D6D32668712EF7672F9E58DEEB15FBD6DCEEC5AE7A4371EA72F2AAE8A12FD"><img alt="Get it on F-Droid" src="snapshots/get-it-on-fdroid.svg" width="200px"/></a> <a href="https://github.com/chen08209/FlClash/releases"><img alt="Get it on GitHub" src="snapshots/get-it-on-github.svg" width="200px"/></a>
+
+### Homebrew
+
+```bash
+brew tap chen08209/tap
+brew install --cask flclash
 ```
 
-测试的是参考逻辑及日志边界；它不会修改 Clash、切换账号、打开 VPN 或发送任何网络请求。参考模型不替代 Go / Android 实现和真机测试。
+## Build
 
-## 隐私与隔离
+1. Update submodules
+   ```bash
+   git submodule update --init --recursive
+   ```
 
-本仓库不包含真实住宅代理密码、机场订阅或账号资料。示例使用保留地址，不能直接联网。自己的配置只在手机本地导入，不提交到 Git。
+2. Install `Flutter` and `Golang` environment
 
-云端开发只修改本仓库，保留电脑 Clash、Cockpit、IP1/IP2 端口绑定及官方手机应用。独立 APK 必须更换应用 ID，启用后同一手机只能同时运行一个 VPN。
+3. Build Application
 
-源代码遵循上游 GPL-3.0；保留根目录 LICENSE、内核 LICENSE 和各组件声明。新增交接与参考代码也采用 GPL-3.0。
+    - android
+
+        1. Install `Android SDK`, `Android NDK`
+
+        2. Set `ANDROID_NDK` environment variable
+
+        3. Run build script
+
+           ```bash
+           dart setup.dart android
+           ```
+
+    - windows
+
+        1. Requires a Windows client
+
+        2. Install `GCC`, `Inno Setup`
+
+        3. Run build script
+
+           ```bash
+           dart setup.dart windows
+           ```
+
+    - linux
+
+        1. Requires a Linux client
+
+        2. Dependencies are auto-installed by setup script, or manually:
+           ```bash
+           sudo apt-get install -y libayatana-appindicator3-dev libkeybinder-3.0-dev
+           ```
+
+        3. Run build script
+
+           ```bash
+           dart setup.dart linux
+           ```
+
+    - macOS
+
+        1. Requires a macOS client
+
+        2. Run build script
+
+           ```bash
+           dart setup.dart macos
+           ```
+
+## Star
+
+The easiest way to support developers is to click on the star (⭐) at the top of the page.
+
+<p style="text-align: center;">
+    <a href="https://api.star-history.com/svg?repos=chen08209/FlClash&Date">
+        <img alt="start" width=50% src="https://api.star-history.com/svg?repos=chen08209/FlClash&Date"/>
+    </a>
+</p>

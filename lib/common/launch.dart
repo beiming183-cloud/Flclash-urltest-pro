@@ -11,7 +11,10 @@ class AutoLaunch {
   static AutoLaunch? _instance;
 
   AutoLaunch._internal() {
-    launcher.setup(appName: appName, appPath: Platform.resolvedExecutable);
+    launchAtStartup.setup(
+      appName: appName,
+      appPath: Platform.resolvedExecutable,
+    );
   }
 
   factory AutoLaunch() {
@@ -19,19 +22,16 @@ class AutoLaunch {
     return _instance!;
   }
 
-  @visibleForTesting
-  static LaunchAtStartup launcher = launchAtStartup;
-
   Future<bool> get isEnable async {
-    return launcher.isEnabled();
+    return launchAtStartup.isEnabled();
   }
 
   Future<bool> enable() async {
-    return launcher.enable();
+    return launchAtStartup.enable();
   }
 
   Future<bool> disable() async {
-    return launcher.disable();
+    return launchAtStartup.disable();
   }
 
   Future<void> updateStatus(bool isAutoLaunch) async {
@@ -40,11 +40,11 @@ class AutoLaunch {
     }
     if (await isEnable == isAutoLaunch) return;
     if (isAutoLaunch == true) {
-      unawaited(enable());
+      enable();
     } else {
-      unawaited(disable());
+      disable();
     }
   }
 }
 
-final autoLaunch = system.isDesktop && !safeModeBuild ? AutoLaunch() : null;
+final autoLaunch = system.isDesktop ? AutoLaunch() : null;

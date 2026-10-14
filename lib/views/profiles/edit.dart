@@ -1,21 +1,18 @@
-import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/pages/editor.dart';
 import 'package:fl_clash/providers/action.dart';
-import 'package:fl_clash/providers/core.dart';
-import 'package:fl_clash/providers/state.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:material_ui/material_ui.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 
-class EditProfileView extends ConsumerStatefulWidget {
+class EditProfileView extends StatefulWidget {
   final Profile profile;
   final BuildContext context;
 
@@ -26,10 +23,10 @@ class EditProfileView extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<EditProfileView> createState() => _EditProfileViewState();
+  State<EditProfileView> createState() => _EditProfileViewState();
 }
 
-class _EditProfileViewState extends ConsumerState<EditProfileView> {
+class _EditProfileViewState extends State<EditProfileView> {
   late final TextEditingController _labelController;
   late final TextEditingController _urlController;
   late final TextEditingController _autoUpdateDurationController;
@@ -37,7 +34,6 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   String? _rawText;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final _fileInfoNotifier = ValueNotifier<FileInfo?>(null);
-  late SetupAction _setupAction;
   Uint8List? _fileData;
 
   @override
@@ -49,7 +45,6 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     _autoUpdateDurationController = TextEditingController(
       text: widget.profile.autoUpdateDuration.inMinutes.toString(),
     );
-    _setupAction = ref.read(setupActionProvider.notifier);
     _updateFileInfo();
   }
 
@@ -72,27 +67,14 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
         minutes: int.parse(_autoUpdateDurationController.text),
       ),
     );
-    final profilesAction = ref.read(profilesActionProvider.notifier);
-    final appLocalizations = context.appLocalizations;
-    final rename = await profilesAction.providerRename(widget.profile, profile);
-    if (rename.conflicts.isNotEmpty) {
-      await dialogs.showMessage(
-        title: appLocalizations.tip,
-        message: TextSpan(
-          text: appLocalizations.providerRenameShadowed(
-            rename.conflicts.map((item) => item.realLabel).join(', '),
-            profile.realLabel,
-          ),
-        ),
-        cancelable: false,
-      );
-      return;
-    }
-    final renameIn = [for (final item in rename.renameIn) item.id];
+    final profilesAction = globalState.container.read(
+      profilesActionProvider.notifier,
+    );
     final hasUpdate = widget.profile.url != profile.url;
     if (_fileData != null) {
       if (profile.type == ProfileType.url && _autoUpdate) {
-        final res = await dialogs.showMessage(
+        final appLocalizations = context.appLocalizations;
+        final res = await globalState.showMessage(
           title: appLocalizations.tip,
           message: TextSpan(text: appLocalizations.profileHasUpdate),
         );
@@ -100,28 +82,16 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           profile = profile.copyWith(autoUpdate: false);
         }
       }
-      final savedProfile = await globalState.safeRun(
-        () => profile.saveFile(
-          _fileData!,
-          validate: (path) =>
-              ref.read(coreHandlerProvider).validateConfig(path),
-        ),
-      );
-      if (savedProfile == null) {
-        return;
-      }
-      profilesAction.putProfile(savedProfile, renameIn: renameIn);
+      profilesAction.putProfile(await profile.saveFile(_fileData!));
     } else if (!hasUpdate) {
-      profilesAction.putProfile(profile, renameIn: renameIn);
+      profilesAction.putProfile(profile);
     } else {
-      unawaited(
-        globalState.safeRun(() async {
-          await Future.delayed(commonDuration);
-          if (hasUpdate) {
-            await profilesAction.updateProfile(profile, renameIn: renameIn);
-          }
-        }),
-      );
+      globalState.safeRun(() async {
+        await Future.delayed(commonDuration);
+        if (hasUpdate) {
+          await profilesAction.updateProfile(profile);
+        }
+      });
     }
     if (mounted) {
       Navigator.of(context).pop();
@@ -137,17 +107,13 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
   Future<void> _handleSaveEdit(BuildContext context, String data) async {
     final message = await globalState.safeRun<String>(() async {
-      final message = await ref
-          .read(profilesActionProvider.notifier)
-          .validateConfigWithData(data);
+      final message = await coreController.validateConfigWithData(data);
       return message;
     }, silence: false);
     if (message?.isNotEmpty == true) {
-      unawaited(
-        dialogs.showMessage(
-          title: currentAppLocalizations.tip,
-          message: TextSpan(text: message),
-        ),
+      globalState.showMessage(
+        title: currentAppLocalizations.tip,
+        message: TextSpan(text: message),
       );
       return;
     }
@@ -157,27 +123,35 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   }
 
   Future<void> _editProfileFile() async {
+    if (_rawText == null) {
+      final profilePath = await appPath.getProfilePath(
+        widget.profile.id.toString(),
+      );
+      final file = File(profilePath);
+      if (await file.exists()) {
+        _rawText = await file.readAsString();
+      }
+    }
+    if (!mounted) return;
     final title = widget.profile.label.takeFirstValid([
       widget.profile.id.toString(),
     ]);
     final editorPage = EditorPage(
       title: title,
-      load: () async => _rawText ??=
-          await readTextFileTask(
-            await appPath.getProfilePath(widget.profile.id.toString()),
-          ) ??
-          '',
-      onSave: (context, _, content) => _handleSaveEdit(context, content),
+      content: _rawText!,
+      onSave: (context, _, content) {
+        _handleSaveEdit(context, content);
+      },
       onPop: (context, _, content) async {
         if (content == _rawText) {
           return true;
         }
-        final res = await dialogs.showMessage(
+        final res = await globalState.showMessage(
           title: title,
           message: TextSpan(text: context.appLocalizations.hasCacheChange),
         );
         if (res == true && context.mounted) {
-          unawaited(_handleSaveEdit(context, content));
+          _handleSaveEdit(context, content);
         } else {
           return true;
         }
@@ -211,12 +185,12 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
 
   Future<void> _handleBack() async {
     final appLocalizations = context.appLocalizations;
-    final res = await dialogs.showMessage(
+    final res = await globalState.showMessage(
       title: appLocalizations.tip,
       message: TextSpan(text: appLocalizations.fileIsUpdate),
     );
     if (res == true) {
-      unawaited(_handleConfirm());
+      _handleConfirm();
     } else {
       if (mounted) {
         Navigator.of(context).pop();
@@ -231,33 +205,123 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
     _fileInfoNotifier.dispose();
     _autoUpdateDurationController.dispose();
     super.dispose();
-    _setupAction.autoApplyProfile();
+    globalState.container.read(setupActionProvider.notifier).autoApplyProfile();
   }
 
   @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
-    final items = <Widget>[
-      _ProfileNameField(
-        controller: _labelController,
-        reservedLabels: ref.watch(
-          appProviderLabelsProvider(ProviderKind.proxy),
+    final items = [
+      ListItem(
+        title: TextFormField(
+          textInputAction: TextInputAction.next,
+          controller: _labelController,
+          inputFormatters: TextInputLimits.limit(TextInputLimits.name),
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            labelText: appLocalizations.name,
+          ),
+          validator: (String? value) {
+            if (value == null || value.isEmpty) {
+              return appLocalizations.profileNameNullValidationDesc;
+            }
+            return null;
+          },
         ),
       ),
       if (widget.profile.type == ProfileType.url) ...[
-        _ProfileUrlField(controller: _urlController),
+        ListItem(
+          title: TextFormField(
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.url,
+            controller: _urlController,
+            inputFormatters: TextInputLimits.limit(TextInputLimits.url),
+            maxLines: 5,
+            minLines: 1,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: appLocalizations.url,
+            ),
+            validator: (String? value) {
+              if (value == null || value.isEmpty) {
+                return appLocalizations.profileUrlNullValidationDesc;
+              }
+              if (!value.isUrl) {
+                return appLocalizations.profileUrlInvalidValidationDesc;
+              }
+              return null;
+            },
+          ),
+        ),
         ListItem.toggle(
           title: Text(appLocalizations.autoUpdate),
           value: _autoUpdate,
           onChanged: _setAutoUpdate,
         ),
         if (_autoUpdate)
-          _AutoUpdateIntervalField(controller: _autoUpdateDurationController),
+          ListItem(
+            title: TextFormField(
+              textInputAction: TextInputAction.next,
+              controller: _autoUpdateDurationController,
+              inputFormatters: TextInputLimits.digitsOnly(
+                TextInputLimits.interval,
+              ),
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: appLocalizations.autoUpdateInterval,
+              ),
+              validator: (String? value) {
+                if (value == null || value.isEmpty) {
+                  return appLocalizations
+                      .profileAutoUpdateIntervalNullValidationDesc;
+                }
+                try {
+                  int.parse(value);
+                } catch (_) {
+                  return appLocalizations
+                      .profileAutoUpdateIntervalInvalidValidationDesc;
+                }
+                return null;
+              },
+            ),
+          ),
       ],
-      _ProfileFileItem(
-        fileInfoNotifier: _fileInfoNotifier,
-        onEdit: _editProfileFile,
-        onUpload: _uploadProfileFile,
+      ValueListenableBuilder<FileInfo?>(
+        valueListenable: _fileInfoNotifier,
+        builder: (_, fileInfo, _) {
+          return FadeThroughBox(
+            alignment: Alignment.centerLeft,
+            child: fileInfo == null
+                ? Container()
+                : ListItem(
+                    title: Text(appLocalizations.profile),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(fileInfo.getDesc(context)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 6,
+                          spacing: 12,
+                          children: [
+                            CommonChip(
+                              avatar: const Icon(Icons.edit),
+                              label: appLocalizations.edit,
+                              onPressed: _editProfileFile,
+                            ),
+                            CommonChip(
+                              avatar: const Icon(Icons.upload),
+                              label: appLocalizations.upload,
+                              onPressed: _uploadProfileFile,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+          );
+        },
       ),
     ];
     return FocusTraversalGroup(
@@ -271,23 +335,20 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
             _handleBack();
             return false;
           },
-          child: CommonScaffold(
-            title: appLocalizations.edit,
-            iconActions: [
-              IconButtonData(
-                glyph: AppGlyphs.check,
+          child: FloatLayout(
+            floatingWidget: FloatWrapper(
+              child: CommonFloatingActionButton(
                 onPressed: _handleConfirm,
-                tooltip: appLocalizations.save,
+                icon: const Icon(Icons.save),
+                label: appLocalizations.save,
               ),
-            ],
-            body: Form(
+            ),
+            child: Form(
               key: _formKey,
-              child: Builder(
-                builder: (context) => ListView.separated(
-                  padding: kMaterialListPadding.copyWith(
-                    top: context.contentTopPadding,
-                    bottom: BottomInsetScope.of(context) + 16,
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: ListView.separated(
+                  padding: kMaterialListPadding.copyWith(bottom: 72),
                   itemBuilder: (_, index) {
                     return items[index];
                   },
@@ -301,185 +362,6 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ProfileNameField extends StatelessWidget {
-  const _ProfileNameField({
-    required this.controller,
-    required this.reservedLabels,
-  });
-
-  final TextEditingController controller;
-  final Set<String> reservedLabels;
-
-  @override
-  Widget build(BuildContext context) {
-    final appLocalizations = context.appLocalizations;
-    return ListItem(
-      title: TextFormField(
-        textInputAction: TextInputAction.next,
-        controller: controller,
-        inputFormatters: TextInputLimits.limit(TextInputLimits.name),
-        decoration: InputDecoration(labelText: appLocalizations.name),
-        validator: (String? value) {
-          if (value == null || value.isEmpty) {
-            return appLocalizations.profileNameNullValidationDesc;
-          }
-          if (reservedLabels.contains(value.trim())) {
-            return appLocalizations.existsTip(appLocalizations.name);
-          }
-          return null;
-        },
-      ),
-    );
-  }
-}
-
-class _ProfileUrlField extends StatelessWidget {
-  const _ProfileUrlField({required this.controller});
-
-  final TextEditingController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final appLocalizations = context.appLocalizations;
-    return ListItem(
-      title: TextFormField(
-        textInputAction: TextInputAction.next,
-        keyboardType: TextInputType.url,
-        controller: controller,
-        inputFormatters: TextInputLimits.limit(TextInputLimits.url),
-        maxLines: 5,
-        minLines: 1,
-        decoration: InputDecoration(labelText: appLocalizations.url),
-        validator: (String? value) {
-          if (value == null || value.isEmpty) {
-            return appLocalizations.profileUrlNullValidationDesc;
-          }
-          if (!value.isUrl) {
-            return appLocalizations.profileUrlInvalidValidationDesc;
-          }
-          return null;
-        },
-      ),
-    );
-  }
-}
-
-class _AutoUpdateIntervalField extends StatelessWidget {
-  const _AutoUpdateIntervalField({required this.controller});
-
-  final TextEditingController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final appLocalizations = context.appLocalizations;
-    return ListItem(
-      title: TextFormField(
-        textInputAction: TextInputAction.next,
-        controller: controller,
-        inputFormatters: TextInputLimits.digitsOnly(TextInputLimits.interval),
-        decoration: InputDecoration(
-          labelText: appLocalizations.autoUpdateInterval,
-        ),
-        validator: (String? value) {
-          if (value == null || value.isEmpty) {
-            return appLocalizations.profileAutoUpdateIntervalNullValidationDesc;
-          }
-          try {
-            int.parse(value);
-          } catch (_) {
-            return appLocalizations
-                .profileAutoUpdateIntervalInvalidValidationDesc;
-          }
-          return null;
-        },
-      ),
-    );
-  }
-}
-
-class _ProfileFileItem extends StatelessWidget {
-  const _ProfileFileItem({
-    required this.fileInfoNotifier,
-    required this.onEdit,
-    required this.onUpload,
-  });
-
-  final ValueNotifier<FileInfo?> fileInfoNotifier;
-  final VoidCallback onEdit;
-  final VoidCallback onUpload;
-
-  Widget _buildMetadata(BuildContext context, FileInfo fileInfo) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 2),
-      child: Row(
-        spacing: 4,
-        children: [
-          MetaChip(label: fileInfo.size.traffic.show),
-          MetaChip(
-            label:
-                fileInfo.lastModified?.getLastUpdateTimeDesc(context) ??
-                context.appLocalizations.unknown,
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<CommonPopupMenuItem> _menuItems(BuildContext context) {
-    final appLocalizations = context.appLocalizations;
-    return [
-      CommonPopupMenuItem(
-        glyph: AppGlyphs.edit,
-        label: appLocalizations.edit,
-        onPressed: onEdit,
-      ),
-      CommonPopupMenuItem(
-        glyph: AppGlyphs.upload,
-        label: appLocalizations.upload,
-        onPressed: onUpload,
-      ),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final appLocalizations = context.appLocalizations;
-    return ValueListenableBuilder<FileInfo?>(
-      valueListenable: fileInfoNotifier,
-      builder: (context, fileInfo, _) {
-        return FadeThroughBox(
-          alignment: Alignment.centerLeft,
-          child: fileInfo == null
-              ? Container()
-              : Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: ItemPositionProvider(
-                    position: ItemPosition.startAndEnd,
-                    child: DecorationListItem(
-                      minVerticalPadding: 8,
-                      contentPadding: const EdgeInsets.only(left: 16, right: 8),
-                      title: Text(appLocalizations.profile),
-                      subtitle: _buildMetadata(context, fileInfo),
-                      trailing: CommonPopupBox(
-                        popupBuilder: (_) =>
-                            CommonPopupMenu(items: _menuItems(context)),
-                        targetBuilder: (open) {
-                          return IconButton(
-                            tooltip: appLocalizations.more,
-                            onPressed: open,
-                            icon: const GlyphIcon(AppGlyphs.more),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-        );
-      },
     );
   }
 }

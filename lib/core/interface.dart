@@ -23,19 +23,9 @@ mixin CoreInterface {
 
   Future<String> validateConfig(String path);
 
-  Future<List<String>> validateProxies(List<Map<String, dynamic>> proxies);
-
   Future<Map<String, dynamic>> getConfig(String path);
 
-  Future<String> dumpRuleSet(String path);
-
-  Future<Delay?> asyncTestDelay(String url, String proxyName);
-
-  Future<ProbeResult?> probe(ProbeParams params);
-
-  Future<OutboundIpResult?> outboundIp(OutboundIpParams params);
-
-  Future<List<ServiceCheckItem>> serviceCheck(ServiceCheckParams params);
+  Future<Delay> asyncTestDelay(String url, String proxyName);
 
   Future<String> updateConfig(UpdateParams updateParams);
 
@@ -43,9 +33,7 @@ mixin CoreInterface {
 
   Future<ProxiesData> getProxies();
 
-  Future<ChangeProxyResult> changeProxy(ChangeProxyParams changeProxyParams);
-
-  Future<RouteSnapshot?> watchRoute(bool watch);
+  Future<String> changeProxy(ChangeProxyParams changeProxyParams);
 
   Future<bool> startListener();
 
@@ -68,7 +56,9 @@ mixin CoreInterface {
 
   FutureOr<Traffic> getTotalTraffic(bool onlyStatisticsProxy);
 
-  FutureOr<CoreMemoryStats?> getMemoryStats();
+  FutureOr<String> getCountryCode(String ip);
+
+  FutureOr<int> getMemory();
 
   FutureOr<void> resetTraffic();
 
@@ -80,8 +70,6 @@ mixin CoreInterface {
 
   FutureOr<List<TrackerInfo>> getConnections();
 
-  FutureOr<int> getConnectionCount();
-
   FutureOr<bool> closeConnection(String id);
 
   FutureOr<String> clearEffect(int profileId);
@@ -92,44 +80,12 @@ mixin CoreInterface {
 }
 
 abstract class CoreHandlerInterface with CoreInterface {
-  Future<List<dynamic>> getStabilityState() async =>
-      await _invokeMethod<List<dynamic>>(
-        method: CoreMethod.getStabilityState,
-      ) ??
-      [];
-
-  Future<bool> setStabilityMode(Map<String, dynamic> params) async =>
-      await _invokeMethod<bool>(
-        method: CoreMethod.setStabilityMode,
-        arguments: params,
-      ) ??
-      false;
-
-  Future<Map<String, dynamic>?> probeStabilityCandidate(
-    Map<String, dynamic> params,
-  ) => _invokeMethod<Map<String, dynamic>>(
-    method: CoreMethod.probeStabilityCandidate,
-    arguments: params,
-  );
-
-  Future<bool> markStabilityFault(String group) async =>
-      await _invokeMethod<bool>(
-        method: CoreMethod.markStabilityFault,
-        arguments: {'group': group},
-      ) ??
-      false;
-
-  Future<Map<String, dynamic>?> exportStabilityDiagnostics() =>
-      _invokeMethod<Map<String, dynamic>>(
-        method: CoreMethod.exportStabilityDiagnostics,
-      );
-
   Future<T?> _invokeMethod<T>({
     required CoreMethod method,
     Object? arguments,
     Duration? timeout,
   }) async {
-    return await handleWatch(
+    return await utils.handleWatch(
       onStart: () {
         commonPrint.log(
           'Invoke method ${method.name} ${DateTime.now()} $arguments',
@@ -156,25 +112,6 @@ abstract class CoreHandlerInterface with CoreInterface {
     Duration? timeout,
   });
 
-  Future<String> _invokeMessage({
-    required CoreMethod method,
-    Object? arguments,
-    Duration? timeout,
-  }) async {
-    final message = await _invokeMethod<String>(
-      method: method,
-      arguments: arguments,
-      timeout: timeout,
-    );
-    if (message == null) {
-      throw CoreMethodException(
-        code: 'no_response',
-        message: 'Core did not answer ${method.name}',
-      );
-    }
-    return message;
-  }
-
   @override
   Future<bool> init(InitParams params) async {
     return await _invokeMethod<bool>(
@@ -196,32 +133,20 @@ abstract class CoreHandlerInterface with CoreInterface {
 
   @override
   Future<String> validateConfig(String path) async {
-    return _invokeMessage(method: CoreMethod.validateConfig, arguments: path);
-  }
-
-  @override
-  Future<List<String>> validateProxies(
-    List<Map<String, dynamic>> proxies,
-  ) async {
-    final data = await _invokeMethod<List<dynamic>>(
-      method: CoreMethod.validateProxies,
-      arguments: proxies,
-    );
-    if (data == null || data.length != proxies.length) {
-      throw CoreMethodException(
-        code: 'no_response',
-        message: 'Core did not answer ${CoreMethod.validateProxies.name}',
-      );
-    }
-    return data.map((item) => item?.toString() ?? '').toList();
+    return await _invokeMethod<String>(
+          method: CoreMethod.validateConfig,
+          arguments: path,
+        ) ??
+        '';
   }
 
   @override
   Future<String> updateConfig(UpdateParams updateParams) async {
-    return _invokeMessage(
-      method: CoreMethod.updateConfig,
-      arguments: updateParams.toJson(),
-    );
+    return await _invokeMethod<String>(
+          method: CoreMethod.updateConfig,
+          arguments: updateParams.toJson(),
+        ) ??
+        '';
   }
 
   @override
@@ -241,15 +166,11 @@ abstract class CoreHandlerInterface with CoreInterface {
 
   @override
   Future<String> setupConfig(SetupParams setupParams) async {
-    return _invokeMessage(
-      method: CoreMethod.setupConfig,
-      arguments: setupParams.toJson(),
-    );
-  }
-
-  @override
-  Future<String> dumpRuleSet(String path) async {
-    return _invokeMessage(method: CoreMethod.dumpRuleSet, arguments: path);
+    return await _invokeMethod<String>(
+          method: CoreMethod.setupConfig,
+          arguments: setupParams.toJson(),
+        ) ??
+        '';
   }
 
   @override
@@ -268,29 +189,12 @@ abstract class CoreHandlerInterface with CoreInterface {
   }
 
   @override
-  Future<ChangeProxyResult> changeProxy(
-    ChangeProxyParams changeProxyParams,
-  ) async {
-    final data = await _invokeMethod<Map<String, dynamic>>(
-      method: CoreMethod.changeProxy,
-      arguments: changeProxyParams.toJson(),
-    );
-    if (data == null) {
-      throw CoreMethodException(
-        code: 'no_response',
-        message: 'Core did not answer ${CoreMethod.changeProxy.name}',
-      );
-    }
-    return ChangeProxyResult.fromJson(data);
-  }
-
-  @override
-  Future<RouteSnapshot?> watchRoute(bool watch) async {
-    final data = await _invokeMethod<Map<String, dynamic>>(
-      method: CoreMethod.watchRoute,
-      arguments: watch,
-    );
-    return data == null ? null : RouteSnapshot.fromJson(data);
+  Future<String> changeProxy(ChangeProxyParams changeProxyParams) async {
+    return await _invokeMethod<String>(
+          method: CoreMethod.changeProxy,
+          arguments: changeProxyParams.toJson(),
+        ) ??
+        '';
   }
 
   @override
@@ -321,7 +225,11 @@ abstract class CoreHandlerInterface with CoreInterface {
 
   @override
   Future<String> updateGeoData(String type) async {
-    return _invokeMessage(method: CoreMethod.updateGeoData, arguments: type);
+    return await _invokeMethod<String>(
+          method: CoreMethod.updateGeoData,
+          arguments: type,
+        ) ??
+        '';
   }
 
   @override
@@ -329,18 +237,20 @@ abstract class CoreHandlerInterface with CoreInterface {
     required String providerName,
     required String data,
   }) async {
-    return _invokeMessage(
-      method: CoreMethod.sideLoadExternalProvider,
-      arguments: {'providerName': providerName, 'data': data},
-    );
+    return await _invokeMethod<String>(
+          method: CoreMethod.sideLoadExternalProvider,
+          arguments: {'providerName': providerName, 'data': data},
+        ) ??
+        '';
   }
 
   @override
   Future<String> updateExternalProvider(String providerName) async {
-    return _invokeMessage(
-      method: CoreMethod.updateExternalProvider,
-      arguments: providerName,
-    );
+    return await _invokeMethod<String>(
+          method: CoreMethod.updateExternalProvider,
+          arguments: providerName,
+        ) ??
+        '';
   }
 
   @override
@@ -356,11 +266,6 @@ abstract class CoreHandlerInterface with CoreInterface {
         .whereType<Map>()
         .map((item) => TrackerInfo.fromJson(Map<String, Object?>.from(item)))
         .toList();
-  }
-
-  @override
-  Future<int> getConnectionCount() async {
-    return await _invokeMethod<int>(method: CoreMethod.getConnectionCount) ?? 0;
   }
 
   @override
@@ -404,7 +309,11 @@ abstract class CoreHandlerInterface with CoreInterface {
 
   @override
   Future<String> clearEffect(int profileId) async {
-    return _invokeMessage(method: CoreMethod.clearEffect, arguments: profileId);
+    return await _invokeMethod<String>(
+          method: CoreMethod.clearEffect,
+          arguments: profileId,
+        ) ??
+        '';
   }
 
   @override
@@ -433,65 +342,33 @@ abstract class CoreHandlerInterface with CoreInterface {
   }
 
   @override
-  Future<Delay?> asyncTestDelay(String url, String proxyName) async {
+  Future<Delay> asyncTestDelay(String url, String proxyName) async {
     final delayParams = {
       'proxy-name': proxyName,
-      'timeout': delayTestTimeoutDuration.inMilliseconds,
+      'timeout': httpTimeoutDuration.inMilliseconds,
       'test-url': url,
     };
     final data = await _invokeMethod<Map<String, dynamic>>(
       method: CoreMethod.asyncTestDelay,
       arguments: delayParams,
-      timeout: delayTestGuardDuration,
-    );
-    return data == null ? null : Delay.fromJson(data);
-  }
-
-  @override
-  Future<ProbeResult?> probe(ProbeParams params) async {
-    final data = await _invokeMethod<Map<String, dynamic>>(
-      method: CoreMethod.probe,
-      arguments: params.toJson(),
-      timeout: probeGuardDuration(params),
-    );
-    return data == null ? null : ProbeResult.fromJson(data);
-  }
-
-  @override
-  Future<OutboundIpResult?> outboundIp(OutboundIpParams params) async {
-    final data = await _invokeMethod<Map<String, dynamic>>(
-      method: CoreMethod.outboundIp,
-      arguments: params.toJson(),
-      timeout: coreGuardFor(params.timeout),
-    );
-    return data == null ? null : OutboundIpResult.fromJson(data);
-  }
-
-  @override
-  Future<List<ServiceCheckItem>> serviceCheck(ServiceCheckParams params) async {
-    final data = await _invokeMethod<List<dynamic>>(
-      method: CoreMethod.serviceCheck,
-      arguments: params.toJson(),
-      timeout: coreGuardFor(
-        params.timeout,
-        budgetFactor: serviceSweepBudgetFactor,
-      ),
+      timeout: const Duration(seconds: 6),
     );
     return data == null
-        ? const []
-        : data
-              .map(
-                (item) =>
-                    ServiceCheckItem.fromJson(item as Map<String, dynamic>),
-              )
-              .toList();
+        ? Delay(name: proxyName, value: -1, url: url)
+        : Delay.fromJson(data);
   }
 
   @override
-  Future<CoreMemoryStats?> getMemoryStats() async {
-    final data = await _invokeMethod<Map<String, dynamic>>(
-      method: CoreMethod.getMemoryStats,
-    );
-    return data == null ? null : CoreMemoryStats.fromJson(data);
+  Future<String> getCountryCode(String ip) async {
+    return await _invokeMethod<String>(
+          method: CoreMethod.getCountryCode,
+          arguments: ip,
+        ) ??
+        '';
+  }
+
+  @override
+  Future<int> getMemory() async {
+    return await _invokeMethod<int>(method: CoreMethod.getMemory) ?? 0;
   }
 }

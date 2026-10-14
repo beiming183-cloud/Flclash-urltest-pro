@@ -12,9 +12,8 @@ import 'package:path/path.dart' as p;
 import 'core_manifest.dart';
 import 'launcher.dart';
 import 'model.dart';
-import 'process_probe.dart';
 
-enum HelperReadiness { ready, notReady, manifestMissing }
+enum WindowsHelperReadiness { ready, notReady, manifestMissing }
 
 final class HelperStartResponse {
   final String sessionId;
@@ -35,35 +34,34 @@ final class HelperStopResponse {
   });
 }
 
-final class HelperException implements Exception {
+final class WindowsHelperException implements Exception {
   final String code;
   final String message;
   final Object? details;
 
-  const HelperException({
+  const WindowsHelperException({
     required this.code,
     required this.message,
     this.details,
   });
 
   @override
-  String toString() => 'HelperException($code, $message, $details)';
+  String toString() => 'WindowsHelperException($code, $message, $details)';
 }
 
-final class HelperClient {
+final class WindowsHelperClient {
   final Dio _dio;
   final String Function() _expectedHelperPath;
   final Future<String> Function() _readCoreSha256;
   final String baseUrl;
   String? _coreSha256Cache;
 
-  HelperClient({
+  WindowsHelperClient({
     Dio? dio,
     String Function()? expectedHelperPath,
     Future<String> Function()? readCoreSha256,
-    String? baseUrl,
-  }) : _dio = dio ?? _createDio(),
-       baseUrl = baseUrl ?? _defaultBaseUrl(),
+    this.baseUrl = 'http://$localhost:$helperPort',
+  }) : _dio = dio ?? _createLoopbackDio(),
        _expectedHelperPath = expectedHelperPath ?? _defaultHelperPath,
        _readCoreSha256 = readCoreSha256 ?? _readBundledCoreSha256;
 
@@ -86,61 +84,36 @@ final class HelperClient {
     return coreSha256;
   }
 
-  // The Helper protocol never leaves the machine; never route it through a
-  // proxy. Linux carries it over a Unix socket the systemd unit owns, so the
-  // authority in the URL is a placeholder the connection factory ignores.
-  static Dio _createDio() {
+  // The Helper protocol is loopback-only; never route it through a proxy.
+  static Dio _createLoopbackDio() {
     return Dio()
       ..httpClientAdapter = IOHttpClientAdapter(
         createHttpClient: () {
           final client = HttpClient();
           client.findProxy = (uri) => 'DIRECT';
-          if (Platform.isLinux) {
-            client.connectionFactory = (uri, proxyHost, proxyPort) {
-              return Socket.startConnect(
-                InternetAddress(
-                  helperSocketPath,
-                  type: InternetAddressType.unix,
-                ),
-                0,
-              );
-            };
-          }
           return client;
         },
       );
-  }
-
-  static String _defaultBaseUrl() {
-    return Platform.isLinux
-        ? 'http://$appHelperService'
-        : 'http://$localhost:$helperPort';
   }
 
   static Future<String> _readBundledCoreSha256() async {
     return (await CoreManifest.readCoreSha256()) ?? '';
   }
 
-  static p.Context get _pathContext {
-    return p.Context(
-      style: Platform.isWindows ? p.Style.windows : p.Style.posix,
-    );
-  }
-
   static String _defaultHelperPath() {
-    final context = _pathContext;
+    final context = p.Context(style: p.Style.windows);
     return context.join(
       context.dirname(Platform.resolvedExecutable),
-      Platform.isWindows ? '$appHelperService.exe' : appHelperService,
+      '$appHelperService.exe',
     );
   }
 
-  Future<HelperReadiness> readiness({
+  Future<WindowsHelperReadiness> readiness({
     Duration? timeout,
     bool logFailure = true,
   }) async {
     if (timeout != null && timeout <= Duration.zero) {
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     }
     final cancelToken = CancelToken();
     final timeoutTimer = timeout == null
@@ -153,7 +126,7 @@ final class HelperClient {
       final coreSha256 = await _readCoreSha256Once();
       if (coreSha256.isEmpty) {
         _logPingFailure('Core manifest is missing or invalid', logFailure);
-        return HelperReadiness.manifestMissing;
+        return WindowsHelperReadiness.manifestMissing;
       }
       final response = await _dio.get<Object?>(
         '$baseUrl/ping',
@@ -166,35 +139,37 @@ final class HelperClient {
           : _notReadyFromPing(response, logFailure);
     } catch (error) {
       _logPingFailure('helper ping failed: $error', logFailure);
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     } finally {
       timeoutTimer?.cancel();
     }
   }
 
-  HelperReadiness _readyFromOk(Response<Object?> response, bool logFailure) {
+  WindowsHelperReadiness _readyFromOk(
+    Response<Object?> response,
+    bool logFailure,
+  ) {
     final protocolVersion = response.headers.value(helperProtocolVersionHeader);
     final helperPath = response.data;
     if (helperPath is! String) {
       _logPingFailure('helper ping returned invalid response', logFailure);
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     }
     if (protocolVersion != helperProtocolVersion) {
       _logPingFailure('helper protocol mismatch: $protocolVersion', logFailure);
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     }
-    final matches = _pathContext.equals(
-      helperPath.trim(),
-      _expectedHelperPath(),
-    );
+    final matches = p.Context(
+      style: p.Style.windows,
+    ).equals(helperPath.trim(), _expectedHelperPath());
     if (!matches) {
       _logPingFailure('helper executable path mismatch', logFailure);
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     }
-    return HelperReadiness.ready;
+    return WindowsHelperReadiness.ready;
   }
 
-  HelperReadiness _notReadyFromPing(
+  WindowsHelperReadiness _notReadyFromPing(
     Response<Object?> response,
     bool logFailure,
   ) {
@@ -204,28 +179,28 @@ final class HelperClient {
       final code = _mapFrom(response.data)?['code'];
       if (code == 'coreSha256Mismatch') {
         _logPingFailure('Helper Core SHA256 mismatch', logFailure);
-        return HelperReadiness.notReady;
+        return WindowsHelperReadiness.notReady;
       }
       if (protocolVersion == helperProtocolVersion) {
         _logPingFailure(
           'helper could not access the Core executable',
           logFailure,
         );
-        return HelperReadiness.notReady;
+        return WindowsHelperReadiness.notReady;
       }
       _logPingFailure(
         'helper returned an unrecognized conflict '
         '(protocol $protocolVersion)',
         logFailure,
       );
-      return HelperReadiness.notReady;
+      return WindowsHelperReadiness.notReady;
     }
     _logPingFailure(
       'helper ping returned HTTP $statusCode '
       '(protocol $protocolVersion)',
       logFailure,
     );
-    return HelperReadiness.notReady;
+    return WindowsHelperReadiness.notReady;
   }
 
   void _logPingFailure(String message, bool enabled) {
@@ -233,15 +208,6 @@ final class HelperClient {
       commonPrint.log(message, logLevel: LogLevel.warning);
     }
   }
-
-  /// /start hashes the whole Core binary before spawning it, and Smart App
-  /// Control adds a cloud reputation lookup inside CreateProcess; the ping
-  /// budget cut those off as a transport error and hid the Helper's answer.
-  static const startTimeout = Duration(seconds: 15);
-
-  /// Covers the Helper's graceful-exit wait plus its forced kill, so a Core
-  /// slow to tear down its TUN reports as stopped rather than as a transport error.
-  static const stopTimeout = Duration(seconds: 6);
 
   Future<HelperStartResponse> start({
     required String address,
@@ -252,13 +218,13 @@ final class HelperClient {
       final response = await _dio.post<Object?>(
         '$baseUrl/start',
         data: {'address': address, 'sessionId': sessionId},
-        options: _options(ResponseType.json, receiveTimeout: startTimeout),
+        options: _options(ResponseType.json),
       );
       final data = _responseMap(response, operation: 'start');
       final returnedSession = data['sessionId'];
       final pid = data['pid'];
       if (returnedSession != sessionId || pid is! int || pid <= 0) {
-        throw const HelperException(
+        throw const WindowsHelperException(
           code: 'invalidResponse',
           message: 'Helper returned an invalid start response',
         );
@@ -267,12 +233,12 @@ final class HelperClient {
         sessionId: returnedSession as String,
         pid: pid,
       );
-    } on HelperException {
+    } on WindowsHelperException {
       rethrow;
     } on DioException catch (error) {
       throw _mapDioException(error, operation: 'start');
     } catch (error) {
-      throw HelperException(
+      throw WindowsHelperException(
         code: 'transportError',
         message: 'Unable to start Core through Helper',
         details: error.toString(),
@@ -286,10 +252,10 @@ final class HelperClient {
       final response = await _dio.post<Object?>(
         '$baseUrl/stop',
         data: {'sessionId': sessionId},
-        options: _options(ResponseType.json, receiveTimeout: stopTimeout),
+        options: _options(ResponseType.json),
       );
       return _parseStopResponse(response, sessionId);
-    } on HelperException {
+    } on WindowsHelperException {
       rethrow;
     } on DioException catch (error) {
       final response = error.response;
@@ -297,7 +263,7 @@ final class HelperClient {
         final data = _mapFrom(response?.data);
         final reason = data?['reason'];
         if (reason is String) {
-          throw HelperException(
+          throw WindowsHelperException(
             code: reason,
             message: 'Helper refused to stop the requested Core session',
             details: data,
@@ -306,7 +272,7 @@ final class HelperClient {
       }
       throw _mapDioException(error, operation: 'stop');
     } catch (error) {
-      throw HelperException(
+      throw WindowsHelperException(
         code: 'transportError',
         message: 'Unable to stop Core through Helper',
         details: error.toString(),
@@ -326,7 +292,7 @@ final class HelperClient {
         stopped is! bool ||
         (stopped && reason != null) ||
         (!stopped && reason != 'notRunning')) {
-      throw const HelperException(
+      throw const WindowsHelperException(
         code: 'invalidResponse',
         message: 'Helper returned an invalid stop response',
       );
@@ -343,7 +309,7 @@ final class HelperClient {
     required String operation,
   }) {
     if (response.statusCode != HttpStatus.ok) {
-      throw HelperException(
+      throw WindowsHelperException(
         code: 'unexpectedStatus',
         message: 'Helper $operation returned HTTP ${response.statusCode}',
         details: response.data,
@@ -351,7 +317,7 @@ final class HelperClient {
     }
     final data = _mapFrom(response.data);
     if (data == null) {
-      throw HelperException(
+      throw WindowsHelperException(
         code: 'invalidResponse',
         message: 'Helper returned an invalid $operation response',
         details: response.data,
@@ -360,7 +326,7 @@ final class HelperClient {
     return data;
   }
 
-  HelperException _mapDioException(
+  WindowsHelperException _mapDioException(
     DioException error, {
     required String operation,
   }) {
@@ -368,13 +334,13 @@ final class HelperClient {
     final code = data?['code'];
     final message = data?['message'];
     if (code is String && message is String) {
-      return HelperException(
+      return WindowsHelperException(
         code: code,
         message: message,
         details: data?['details'],
       );
     }
-    return HelperException(
+    return WindowsHelperException(
       code: 'transportError',
       message: 'Helper $operation request failed',
       details: error.toString(),
@@ -397,22 +363,18 @@ final class HelperClient {
 
   void _validateSessionId(String sessionId) {
     if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(sessionId)) {
-      throw const HelperException(
+      throw const WindowsHelperException(
         code: 'invalidSessionId',
         message: 'Core session ID must be 128-bit lowercase hexadecimal',
       );
     }
   }
 
-  Options _options(
-    ResponseType responseType, {
-    bool acceptAnyStatus = false,
-    Duration receiveTimeout = const Duration(seconds: 2),
-  }) {
+  Options _options(ResponseType responseType, {bool acceptAnyStatus = false}) {
     return Options(
       responseType: responseType,
       connectTimeout: const Duration(milliseconds: 300),
-      receiveTimeout: receiveTimeout,
+      receiveTimeout: const Duration(seconds: 2),
       // The Helper reports readiness via non-2xx (400, 409, ...), so only
       // transport errors should surface as DioExceptions.
       validateStatus: acceptAnyStatus ? (_) => true : null,
@@ -420,11 +382,10 @@ final class HelperClient {
   }
 }
 
-final class HelperLauncher implements CoreProcessLauncher {
-  final HelperClient client;
-  final ProcessLivenessProbe livenessProbe;
+final class WindowsHelperLauncher implements CoreProcessLauncher {
+  final WindowsHelperClient client;
 
-  const HelperLauncher(this.client, {this.livenessProbe = isProcessAlive});
+  const WindowsHelperLauncher(this.client);
 
   @override
   Future<CoreProcessLease> start({
@@ -440,18 +401,11 @@ final class HelperLauncher implements CoreProcessLauncher {
         sessionId: response.sessionId,
         pid: response.pid,
         client: client,
-        livenessProbe: livenessProbe,
       );
     } catch (error, stackTrace) {
       try {
         await client.stop(sessionId);
-      } catch (releaseError) {
-        commonPrint.log(
-          'Failed to release Helper session $sessionId after a start failure: '
-          '${compactError(releaseError)}',
-          logLevel: LogLevel.warning,
-        );
-      }
+      } catch (_) {}
       Error.throwWithStackTrace(error, stackTrace);
     }
   }
@@ -475,7 +429,7 @@ final class FallbackCoreLauncher implements CoreProcessLauncher {
   }) async {
     try {
       return await primary.start(sessionId: sessionId, address: address);
-    } on HelperException catch (error) {
+    } on WindowsHelperException catch (error) {
       if (!_preSpawnHelperErrors.contains(error.code)) rethrow;
       commonPrint.log(
         'Helper could not start the Core ($error); '
@@ -487,16 +441,17 @@ final class FallbackCoreLauncher implements CoreProcessLauncher {
   }
 }
 
-typedef HelperReadinessProbe = Future<HelperReadiness> Function();
+typedef HelperReadinessProbe = Future<WindowsHelperReadiness> Function();
 
-final class HelperLauncherResolver implements DesktopCoreLauncherResolver {
-  final bool hasHelper;
+final class WindowsHelperLauncherResolver
+    implements DesktopCoreLauncherResolver {
+  final bool isWindows;
   final CoreProcessLauncher directLauncher;
   final CoreProcessLauncher helperLauncher;
   final HelperReadinessProbe helperReady;
 
-  const HelperLauncherResolver({
-    required this.hasHelper,
+  const WindowsHelperLauncherResolver({
+    required this.isWindows,
     required this.directLauncher,
     required this.helperLauncher,
     required this.helperReady,
@@ -504,9 +459,9 @@ final class HelperLauncherResolver implements DesktopCoreLauncherResolver {
 
   @override
   Future<CoreProcessLauncher> resolve() async {
-    if (!hasHelper) return directLauncher;
+    if (!isWindows) return directLauncher;
     final readiness = await helperReady();
-    if (readiness == HelperReadiness.ready) {
+    if (readiness == WindowsHelperReadiness.ready) {
       return FallbackCoreLauncher(
         primary: helperLauncher,
         fallback: directLauncher,
@@ -523,20 +478,17 @@ final class HelperCoreLease implements CoreProcessLease {
   @override
   final int pid;
 
-  final HelperClient _client;
-  final ProcessLivenessProbe _livenessProbe;
+  final WindowsHelperClient _client;
   Future<CoreProcessStopResult>? _stopOperation;
 
   HelperCoreLease({
     required this.sessionId,
     required this.pid,
-    required HelperClient client,
-    ProcessLivenessProbe livenessProbe = isProcessAlive,
-  }) : _client = client,
-       _livenessProbe = livenessProbe;
+    required WindowsHelperClient client,
+  }) : _client = client;
 
   @override
-  CoreProcessOwner get owner => CoreProcessOwner.helper;
+  CoreProcessOwner get owner => CoreProcessOwner.windowsHelper;
 
   @override
   Future<CoreProcessStopResult> stop(Duration timeout) {
@@ -555,22 +507,8 @@ final class HelperCoreLease implements CoreProcessLease {
     return nextOperation;
   }
 
-  // A dead Helper takes its Core with it; the OS is then the only witness.
   Future<CoreProcessStopResult> _stop() async {
-    final HelperStopResponse response;
-    try {
-      response = await _client.stop(sessionId);
-    } on HelperException catch (error) {
-      if (error.code != 'transportError' || await _livenessProbe(pid)) {
-        rethrow;
-      }
-      commonPrint.log(
-        'Helper is unreachable and Core $pid has already exited; '
-        'session $sessionId is released',
-        logLevel: LogLevel.warning,
-      );
-      return const CoreProcessStopResult(stopped: false, exitConfirmed: true);
-    }
+    final response = await _client.stop(sessionId);
     return CoreProcessStopResult(
       stopped: response.stopped,
       exitConfirmed: true,
@@ -578,4 +516,4 @@ final class HelperCoreLease implements CoreProcessLease {
   }
 }
 
-final helperClient = HelperClient();
+final windowsHelperClient = WindowsHelperClient();

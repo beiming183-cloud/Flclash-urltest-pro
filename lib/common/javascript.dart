@@ -1,14 +1,7 @@
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 
-import 'package:fl_clash/common/exception.dart';
-import 'package:flutter/foundation.dart';
-import 'package:rust_api/rust_api.dart';
-
-typedef ScriptEvaluator =
-    Future<String> Function({required String script, required String config});
-
-@visibleForTesting
-ScriptEvaluator scriptEvaluator = evaluateScript;
+import 'package:flutter_js/flutter_js.dart';
 
 Future<Map<String, dynamic>> handleEvaluate(
   String scriptContent,
@@ -17,20 +10,18 @@ Future<Map<String, dynamic>> handleEvaluate(
   if (config['proxy-providers'] == null) {
     config['proxy-providers'] = {};
   }
-  final String result;
-  try {
-    result = await scriptEvaluator(
-      script: scriptContent,
-      config: json.encode(config),
-    );
-  } catch (e) {
-    throw MessageException(e.toString());
+  final configJs = json.encode(config);
+  final runtime = getJavascriptRuntime();
+  final res = await runtime.evaluateAsync('''
+      $scriptContent
+      main($configJs)
+    ''');
+  if (res.isError) {
+    throw res.stringResult;
   }
-  final decoded = json.decode(result);
-  if (decoded is! Map<String, dynamic>) {
-    throw const MessageException(
-      'script did not return a configuration object',
-    );
-  }
-  return decoded;
+  final value = switch (res.rawResult is ffi.Pointer) {
+    true => runtime.convertValue<Map<String, dynamic>>(res),
+    false => Map<String, dynamic>.from(res.rawResult),
+  };
+  return value ?? config;
 }

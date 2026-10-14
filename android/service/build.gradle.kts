@@ -17,10 +17,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    sourceSets {
-        // Unit tests live under android/tests/ instead of each module's src/test.
-        getByName("test").java.setSrcDirs(listOf("../tests/service"))
-    }
 }
 
 kotlin {
@@ -34,6 +30,4 @@ dependencies {
     implementation(project(":common"))
     implementation(libs.gson)
     implementation(libs.androidx.core)
-    testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
 }

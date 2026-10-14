@@ -294,10 +294,18 @@ final class DesktopCoreLifecycle implements DesktopCoreLifecycleController {
   Future<_LifecycleAchievement> _reconcile(_LifecycleIntent intent) async {
     final unconfirmedLease = _unconfirmedLease;
     if (unconfirmedLease != null) {
-      await _stopUnconfirmedLease(
-        unconfirmedLease,
-        allowFailure: intent.target == _LifecycleTarget.closed,
-      );
+      if (intent.target == _LifecycleTarget.closed) {
+        await _stopUnconfirmedLease(unconfirmedLease, allowFailure: true);
+      } else if (intent.target == _LifecycleTarget.stopped) {
+        await _stopUnconfirmedLease(unconfirmedLease, allowFailure: false);
+      } else {
+        throw _failure(
+          code: 'process_exit_unconfirmed',
+          phase: DesktopCorePhase.failed,
+          revision: intent.revision,
+          lease: unconfirmedLease,
+        );
+      }
     }
     switch (intent.target) {
       case _LifecycleTarget.running:

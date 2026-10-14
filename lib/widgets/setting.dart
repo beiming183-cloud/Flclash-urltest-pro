@@ -1,6 +1,5 @@
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/icons/icons.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 
 import 'card.dart';
 
@@ -27,10 +26,8 @@ class SettingInfoCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            if (info.glyph case final glyph?) ...[
-              Flexible(child: GlyphIcon(glyph)),
-              const SizedBox(width: 8),
-            ],
+            Flexible(child: Icon(info.iconData)),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(info.label, style: context.textTheme.bodyMedium),
             ),
