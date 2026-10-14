@@ -553,5 +553,14 @@
   "geoSkipped": "{name} はすでに最新です",
   "geoUpdated": "{name} 更新済み",
   "secondsCount": "{count} 秒",
-  "entriesCount": "{count} エントリ"
+  "entriesCount": "{count} エントリ",
+  "websiteTests": "ウェブサイトテスト",
+  "websiteTestCurrentRoute": "現在の Clash 経路 · HTTPS 応答時間",
+  "websiteTest": "テスト",
+  "websiteTestAll": "すべてテスト",
+  "websiteTestAdd": "サイトを追加",
+  "websiteTestUrl": "HTTPS URL",
+  "websiteTestInvalidUrl": "有効な HTTPS URL を入力してください",
+  "websiteTestOffline": "先に接続",
+  "websiteTestFailed": "失敗"
 }

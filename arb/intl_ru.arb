@@ -553,5 +553,14 @@
   "geoSkipped": "Для {name} уже установлена последняя версия",
   "geoUpdated": "{name} обновлено",
   "secondsCount": "{count} секунд",
-  "entriesCount": "{count} записей"
+  "entriesCount": "{count} записей",
+  "websiteTests": "Проверка сайтов",
+  "websiteTestCurrentRoute": "Текущий маршрут Clash · Время ответа HTTPS",
+  "websiteTest": "Проверить",
+  "websiteTestAll": "Проверить все",
+  "websiteTestAdd": "Добавить сайт",
+  "websiteTestUrl": "HTTPS URL",
+  "websiteTestInvalidUrl": "Введите корректный HTTPS URL",
+  "websiteTestOffline": "Сначала подключитесь",
+  "websiteTestFailed": "Ошибка"
 }

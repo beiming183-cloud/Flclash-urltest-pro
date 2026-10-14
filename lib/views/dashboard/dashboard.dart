@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'widgets/core_status_button.dart';
 import 'widgets/start_button.dart';
+import 'widgets/website_test.dart';
 
 typedef _IsEditWidgetBuilder = Widget Function(bool isEdit);
 
@@ -203,7 +204,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: _maxGridWidth),
-                child: LayoutBuilder(
+                child: Column(
+                  children: [
+                    LayoutBuilder(
                   builder: (_, constraints) {
                     final columns = min(
                       max(4 * ((constraints.maxWidth / 280).ceil()), 8),
@@ -230,6 +233,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                             children: children,
                           );
                   },
+                    ),
+                    const SizedBox(height: 14),
+                    WebsiteTestPanel(
+                      connected: ref.watch(isStartProvider) && !ref.watch(suspendProvider),
+                      port: ref.watch(patchClashConfigProvider.select((state) => state.mixedPort)),
+                    ),
+                  ],
                 ),
               ),
             ),

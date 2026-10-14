@@ -597,5 +597,14 @@
   "stabilityStoppedShort": "Stopped",
   "stabilityValidatingShort": "Verifying",
   "stabilityFailureShort": "Check failed",
-  "stabilityType": "Stable choice"
+  "stabilityType": "Stable choice",
+  "websiteTests": "Website tests",
+  "websiteTestCurrentRoute": "Current Clash route · HTTPS response time",
+  "websiteTest": "Test",
+  "websiteTestAll": "Test all",
+  "websiteTestAdd": "Add website",
+  "websiteTestUrl": "HTTPS URL",
+  "websiteTestInvalidUrl": "Enter a valid HTTPS URL",
+  "websiteTestOffline": "Connect first",
+  "websiteTestFailed": "Failed"
 }

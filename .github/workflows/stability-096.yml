@@ -58,7 +58,7 @@ jobs:
           flutter pub get
           dart run intl_utils:generate
           dart run build_runner build --delete-conflicting-outputs
-          dart format lib/views/stability.dart lib/views/proxies/proxies.dart lib/views/proxies/card.dart lib/core/controller.dart lib/core/interface.dart lib/core/method.dart lib/core/event.dart lib/manager/core_manager.dart lib/enum/enum.dart lib/providers/actions/common.dart
+          dart format lib/common/website_probe.dart lib/views/dashboard/dashboard.dart lib/views/dashboard/widgets/website_test.dart test/widgets/website_test_panel_test.dart lib/views/stability.dart lib/views/proxies/proxies.dart lib/views/proxies/card.dart lib/core/controller.dart lib/core/interface.dart lib/core/method.dart lib/core/event.dart lib/manager/core_manager.dart lib/enum/enum.dart lib/providers/actions/common.dart
           flutter analyze --no-fatal-infos > flutter-analysis.log 2>&1 || { cat flutter-analysis.log; exit 1; }
           flutter test test/core/protocol_contract_test.dart test/core/desktop/ test/providers/action_test.dart test/widgets/ --reporter expanded
       - name: Build isolated APK

@@ -597,5 +597,14 @@
   "stabilityStoppedShort": "未启动",
   "stabilityValidatingShort": "验证中",
   "stabilityFailureShort": "检测异常",
-  "stabilityType": "稳定择优"
+  "stabilityType": "稳定择优",
+  "websiteTests": "网站测试",
+  "websiteTestCurrentRoute": "当前 Clash 线路 · HTTPS 响应耗时",
+  "websiteTest": "测试",
+  "websiteTestAll": "一键测试",
+  "websiteTestAdd": "添加网站",
+  "websiteTestUrl": "HTTPS 地址",
+  "websiteTestInvalidUrl": "请输入有效的 HTTPS 地址",
+  "websiteTestOffline": "请先连接",
+  "websiteTestFailed": "失败"
 }

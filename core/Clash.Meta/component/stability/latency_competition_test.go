@@ -91,3 +91,23 @@ func TestRecentFailuresStillPenalizeLatencyCost(t *testing.T) {
 		t.Fatal("Recent instability was ignored by latency-quality ranking")
 	}
 }
+
+func TestIdleChallengerMustRebuildRecentSuccessStreak(t *testing.T) {
+	now := time.Unix(1000, 0)
+	e, _ := New([]Candidate{{"current", "r1", "a1"}, {"idle", "r2", "a2"}}, func() time.Time { return now })
+	epoch := e.Snapshot().Epoch
+	for i := 0; i < 3; i++ {
+		e.Record("current", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 450 * time.Millisecond}, true)
+		now = now.Add(5 * time.Second)
+	}
+	now = now.Add(20 * time.Second)
+	idle := e.nodes["idle"]
+	idle.Streak = 20
+	idle.LastSuccess = now.Add(-3 * time.Minute)
+	idle.FirstSuccess = now.Add(-5 * time.Minute)
+	idle.TLSAt, idle.ExitAt = idle.LastSuccess, idle.LastSuccess
+	e.Record("idle", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond}, true)
+	if idle.Streak != 1 || e.Snapshot().Primary != "current" {
+		t.Fatal("Old idle samples were treated as current stable evidence")
+	}
+}
