@@ -64,7 +64,7 @@ Future<List<Group>> _toGroupsTask(ComputeGroupsState state) async {
         return GroupTypeExtension.getGroupType(proxy['type'] as String? ?? '') != null;
       })
       .map((groupName) {
-        final group = proxies[groupName];
+        final group = Map<String, dynamic>.from(proxies[groupName] as Map);
         group['all'] = ((group['all'] ?? []) as List)
             .map((name) => proxies[name])
             .where((proxy) => proxy != null)
