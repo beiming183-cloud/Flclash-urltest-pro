@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fl_clash/core/event.dart';
+import 'package:fl_clash/common/task.dart';
 import 'package:fl_clash/core/desktop/model.dart';
 import 'package:fl_clash/core/interface.dart';
 import 'package:fl_clash/core/method.dart';
@@ -125,6 +126,21 @@ class _EmptyConfigCoreHandler extends _RecordingCoreHandler {
 }
 
 void main() {
+  test('stable groups retain their original proxy tab and members', () async {
+    final groups = await toGroupsTask(const ComputeGroupsState(
+      proxiesData: ProxiesData(all: ['IP1'], proxies: {
+        'IP1': {'name': 'IP1', 'type': 'StableFailover', 'all': ['home-1'], 'now': 'home-1'},
+        'home-1': {'name': 'home-1', 'type': 'Http'},
+      }),
+      sortType: ProxiesSortType.none,
+      delayMap: {},
+      selectedMap: {},
+      defaultTestUrl: 'https://www.gstatic.com/generate_204',
+    ));
+    expect(groups.single.name, 'IP1');
+    expect(groups.single.type, GroupType.URLTest);
+    expect(groups.single.all.single.name, 'home-1');
+  });
   test('method call keeps structured arguments', () async {
     final fixture =
         json.decode(
