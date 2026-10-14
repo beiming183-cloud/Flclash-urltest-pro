@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/common/theme.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/state.dart';
@@ -74,7 +75,6 @@ class _TestApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    globalState.themeController = ThemeController();
     return MaterialApp(
       locale: locale,
       localizationsDelegates: const [
@@ -84,6 +84,11 @@ class _TestApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.delegate.supportedLocales,
+      builder: (context, child) {
+        globalState.measure = Measure.of(context, 1);
+        globalState.theme = CommonTheme.of(context, 1);
+        return child!;
+      },
       home: Scaffold(body: child),
     );
   }
