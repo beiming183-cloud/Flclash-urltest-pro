@@ -118,7 +118,7 @@ class _StabilityViewState extends State<StabilityView> {
             const SizedBox(height: 8),
             Text(l10n.stabilityMeasurement),
             if ((group['pending'] as String? ?? '').isNotEmpty)
-              Text('${l10n.stabilityValidating} ¡¤ ${names[group['pending']]}'),
+              Text('${l10n.stabilityValidating} · ${names[group['pending']]}'),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(l10n.stabilityAutomatic),
