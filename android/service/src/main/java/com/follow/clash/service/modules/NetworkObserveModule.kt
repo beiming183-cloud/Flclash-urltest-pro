@@ -34,9 +34,7 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentDnsList = listOf<String>()
-    private var currentNetwork: Network? = null
-    private var currentValidated = false
-    private var hasNetworkSnapshot = false
+    private val stabilityNetworkObserver = StabilityNetworkObserver()
 
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -117,15 +115,18 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     @Synchronized
     private fun updateDns() {
         val selected = networkInfos.asSequence().minByOrNull(::networkPriority)
-        val validated = selected?.key?.let {
-            connectivity?.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } == true
-        if (!hasNetworkSnapshot || selected?.key != currentNetwork || validated != currentValidated) {
-            hasNetworkSnapshot = true
-            currentNetwork = selected?.key
-            currentValidated = validated
-            val key = currentNetwork?.networkHandle ?: 0L
-            Core.invokeMethod("{\"method\":\"stabilityNetworkChanged\",\"arguments\":{\"networkKey\":\"$key\",\"online\":$validated}}") { }
+        val capabilities = selected?.key?.let { connectivity?.getNetworkCapabilities(it) }
+        // Android's captive-portal validation may fail while the proxy is reachable.
+        // The core's budgeted TLS and fixed-exit checks determine candidate eligibility.
+        val snapshot = stabilityNetworkObserver.update(
+            networkKey = selected?.key?.networkHandle,
+            internet = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+            notVpn = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == true,
+            notSuspended = capabilities != null && (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)),
+        )
+        if (snapshot != null) {
+            Core.invokeMethod("{\"method\":\"stabilityNetworkChanged\",\"arguments\":{\"networkKey\":\"${snapshot.networkKey}\",\"online\":${snapshot.online}}}") { }
         }
         val dnsList = selected
             ?.value

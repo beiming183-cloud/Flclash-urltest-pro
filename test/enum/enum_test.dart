@@ -7,6 +7,8 @@ void main() {
     test('parses clash group type aliases case-insensitively', () {
       expect(GroupType.parse('url-test'), GroupType.URLTest);
       expect(GroupType.parse('URLTEST'), GroupType.URLTest);
+      expect(GroupType.parse('StableFailover'), GroupType.URLTest);
+      expect(GroupType.parse('stable-failover'), GroupType.URLTest);
       expect(GroupType.parse('selector'), GroupType.Selector);
       expect(GroupType.parse('loadbalance'), GroupType.LoadBalance);
     });
@@ -20,6 +22,7 @@ void main() {
     test('maps display names back to enum values', () {
       expect(GroupTypeExtension.getGroupType('Selector'), GroupType.Selector);
       expect(GroupTypeExtension.getGroupType('URLTest'), GroupType.URLTest);
+      expect(GroupTypeExtension.getGroupType('StableFailover'), GroupType.URLTest);
       expect(GroupTypeExtension.getGroupType('missing'), isNull);
     });
 

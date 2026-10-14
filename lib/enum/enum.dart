@@ -103,6 +103,7 @@ extension GroupTypeExtension on GroupType {
   }
 
   static GroupType? getGroupType(String value) {
+    if (value == 'StableFailover') return GroupType.URLTest;
     final index = GroupTypeExtension.valueList.indexOf(value);
     if (index == -1) return null;
     return GroupType.values[index];

@@ -54,6 +54,50 @@ void main() {
   });
 
   test(
+    'toGroupsTask keeps StableFailover candidates beside the selector',
+    () async {
+      final proxies = <String, dynamic>{
+        'Exit': {
+          'name': 'Exit',
+          'type': 'Selector',
+          'now': 'IP1',
+          'all': ['IP1'],
+        },
+        'IP1': {
+          'name': 'IP1',
+          'type': 'StableFailover',
+          'now': 'Home-B',
+          'all': ['Home-A', 'Home-B', 'missing'],
+        },
+        'Home-A': {'name': 'Home-A', 'type': 'Http'},
+        'Home-B': {'name': 'Home-B', 'type': 'Socks5'},
+        'Relay': {'name': 'Relay', 'type': 'Hysteria2'},
+        'Unknown': {'name': 'Unknown', 'type': 'Unsupported', 'all': []},
+      };
+      final groups = await toGroupsTask(
+        ComputeGroupsState(
+          proxiesData: ProxiesData(
+            all: const ['Exit', 'IP1', 'Relay', 'Unknown'],
+            proxies: proxies,
+          ),
+          sortType: ProxiesSortType.none,
+          delayMap: const {},
+          selectedMap: const {},
+          defaultTestUrl: '',
+        ),
+      );
+
+      expect(groups.map((group) => group.name), ['Exit', 'IP1']);
+      final stable = groups.last;
+      expect(stable.type, GroupType.URLTest);
+      expect(stable.now, 'Home-B');
+      expect(stable.all.map((proxy) => proxy.name), ['Home-A', 'Home-B']);
+      expect(stable.all.map((proxy) => proxy.type), ['Http', 'Socks5']);
+      expect(proxies['IP1']['all'], ['Home-A', 'Home-B', 'missing']);
+    },
+  );
+
+  test(
     'clashConfigTask parses core config data off the main isolate',
     () async {
       final configMap = <String, dynamic>{
