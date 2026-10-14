@@ -41,6 +41,8 @@ type TLSInfo struct {
 	NotAfter    time.Time `json:"notAfter"`
 	Version     uint16    `json:"version"`
 	Verified    bool      `json:"verified"`
+	CheckedAt   time.Time `json:"checkedAt"`
+	Epoch       uint64    `json:"networkEpoch"`
 }
 
 type Stats struct {

@@ -162,5 +162,6 @@ func (s *Stable) schedule(ctx context.Context) {
 				break
 			}
 		}
+		s.checkTargetTLS(ctx)
 	}
 }

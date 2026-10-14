@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -45,6 +44,12 @@ func stableError(err error) (string, bool) {
 		return "relay_dial_timeout", false
 	}
 	text := strings.ToLower(err.Error())
+	if text == "service_failed" {
+		return "service_failed", false
+	}
+	if text == "unexpected_exit" {
+		return "unexpected_exit", true
+	}
 	if strings.Contains(text, "budget_exhausted") {
 		return "budget_exhausted", false
 	}
@@ -89,6 +94,7 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		return sample
 	}
 	sample.Latency = time.Duration(delay) * time.Millisecond
+	sample.TLS = true
 	if !verify {
 		sample.OK = true
 		return sample
@@ -105,74 +111,33 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	request := func(url string) (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	request := func(url string) ([]byte, error) {
+		requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
 		}
-		return client.Do(req)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, errors.New("service_failed")
+		}
+		return io.ReadAll(io.LimitReader(resp.Body, 4096))
 	}
 	if verify {
-		for _, host := range []string{"chatgpt.com:443", "android.chat.openai.com:443"} {
-			sample.Phase = "residential"
-			sample.Service = "chatgpt"
-			if strings.HasPrefix(host, "android.") {
-				sample.Service = "android"
-			}
-			if !reserve() {
-				sample.Error = "budget_exhausted"
-				return sample
-			}
-			m := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
-			m.SetRemoteAddress(host)
-			conn, err := proxy.DialContext(ctx, m)
-			if err != nil {
-				sample.Error, sample.Hard = stableError(err)
-				return sample
-			}
-			hostname, _, _ := net.SplitHostPort(host)
-			sample.Phase = "tls"
-			tc := tls.Client(conn, &tls.Config{ServerName: hostname, MinVersion: tls.VersionTLS12})
-			err = tc.HandshakeContext(ctx)
-			service := "chatgpt"
-			if strings.HasPrefix(host, "android.") {
-				service = "android"
-			}
-			sample.TLSInfo = append(sample.TLSInfo, stableTLSInfo(service, tc.ConnectionState()))
-			tc.Close()
-			if err != nil {
-				sample.Error, sample.Hard = stableError(err)
-				if sample.Error == "relay_dial_timeout" {
-					sample.Error = "tls_handshake_timeout"
-				}
-				return sample
-			}
-		}
 		sample.TLS = true
 		sample.Phase, sample.Service = "exit", "exit"
-		resp, err := request("https://api.ipify.org")
+		err, hard := verifyStableExit(expected, request)
 		if err != nil {
 			sample.Error, sample.Hard = stableError(err)
+			sample.Hard = sample.Hard || hard
 			if sample.Error == "relay_dial_timeout" {
 				sample.Error = "exit_query_timeout"
 			}
-			return sample
-		}
-		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 128))
-		resp.Body.Close()
-		if readErr != nil || resp.StatusCode != 200 {
-			sample.Error = "service_failed"
-			return sample
-		}
-		ip, parseErr := netip.ParseAddr(strings.TrimSpace(string(data)))
-		want, _ := netip.ParseAddr(expected)
-		if parseErr != nil {
-			sample.Error = "service_failed"
-			return sample
-		}
-		if ip.Unmap() != want.Unmap() {
-			sample.Error = "unexpected_exit"
-			sample.Hard = true
 			return sample
 		}
 		sample.Exit = true

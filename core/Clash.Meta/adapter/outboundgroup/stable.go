@@ -48,27 +48,29 @@ type StableOption struct {
 
 type Stable struct {
 	*GroupBase
-	engine     *stability.Engine
-	journal    *stability.Journal
-	groupID    string
-	expected   string
-	byID       map[string]C.Proxy
-	byName     map[string]string
-	mu         sync.Mutex
-	cancel     context.CancelFunc
-	ctx        context.Context
-	wg         sync.WaitGroup
-	slots      chan struct{}
-	probing    map[string]bool
-	scheduled  map[string]bool
-	wake       chan struct{}
-	networkKey string
-	online     bool
-	preferred  []string
-	requested  string
-	fixed      string
-	transition sync.Mutex
-	probe      func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
+	engine      *stability.Engine
+	journal     *stability.Journal
+	groupID     string
+	expected    string
+	byID        map[string]C.Proxy
+	byName      map[string]string
+	mu          sync.Mutex
+	cancel      context.CancelFunc
+	ctx         context.Context
+	wg          sync.WaitGroup
+	slots       chan struct{}
+	probing     map[string]bool
+	scheduled   map[string]bool
+	wake        chan struct{}
+	networkKey  string
+	online      bool
+	preferred   []string
+	requested   string
+	fixed       string
+	tlsChecking bool
+	tlsChecked  map[string]time.Time
+	transition  sync.Mutex
+	probe       func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
 }
 
 func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C.Proxy) (*Stable, error) {
@@ -130,6 +132,7 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	}
 	s.scheduled = map[string]bool{}
 	s.wake = make(chan struct{}, 1)
+	s.tlsChecked = map[string]time.Time{}
 	if err == nil {
 		s.engine.Restore(j.Statistics(s.groupID))
 	}
@@ -265,6 +268,7 @@ func (s *Stable) Start() {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	ctx := s.ctx
 	s.engine.Invalidate()
+	s.tlsChecked = map[string]time.Time{}
 	if s.fixed != "" {
 		s.requested = s.byName[s.fixed]
 	}
