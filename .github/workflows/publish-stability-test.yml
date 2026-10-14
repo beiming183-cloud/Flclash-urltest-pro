@@ -17,15 +17,15 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      SOURCE_COMMIT: '494c811b653e444300e2216552120e0ffe5bb2fc'
-      RELEASE_TAG: 'stability-pro-test-20261014'
+      SOURCE_COMMIT: 'd6592dc1e63da175da69b8d753a71a3df9cbddfb'
+      RELEASE_TAG: 'stability-pro-test-20261014-v2'
     steps:
       - name: Download and verify successful build artifact
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/$GH_REPO/actions/runs/38440611267" > run.json
-          gh api "repos/$GH_REPO/actions/artifacts/11837316516" > artifact.json
+          gh api "repos/$GH_REPO/actions/runs/38492440671" > run.json
+          gh api "repos/$GH_REPO/actions/artifacts/11862392852" > artifact.json
           python3 - <<'PY'
           import json, os
           run = json.load(open('run.json'))
@@ -34,13 +34,13 @@ jobs:
           assert run['head_sha'] == os.environ['SOURCE_COMMIT']
           assert not artifact['expired']
           assert artifact['name'] == 'FlClash-URLTest-Pro-arm64-test'
-          assert artifact['digest'] == 'sha256:e06d303c11f0751831e838812175e5bce38225fc72464fbe861f67932f4a2659'
+          assert artifact['digest'] == 'sha256:1e5355471737f10e13e152e25258382256ccec94edee4a9d130042fa8b8d334e'
           PY
-          gh api "repos/$GH_REPO/actions/artifacts/11837316516/zip" > verified-artifact.zip
+          gh api "repos/$GH_REPO/actions/artifacts/11862392852/zip" > verified-artifact.zip
           python3 - <<'PY'
           import hashlib, os, pathlib, zipfile
           data = pathlib.Path('verified-artifact.zip').read_bytes()
-          assert hashlib.sha256(data).hexdigest() == 'e06d303c11f0751831e838812175e5bce38225fc72464fbe861f67932f4a2659'
+          assert hashlib.sha256(data).hexdigest() == '1e5355471737f10e13e152e25258382256ccec94edee4a9d130042fa8b8d334e'
           expected = {'FlClash-URLTest-Pro-arm64-test.apk', 'SHA256SUMS.txt', 'SIGNATURE.txt', 'SOURCE_COMMIT.txt'}
           out = pathlib.Path('delivery')
           out.mkdir()
@@ -61,20 +61,17 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<'NOTES'
-          Android arm64 测试版。手机在下方 Assets 点击 **FlClash-URLTest-Pro-arm64-test.apk** 即可下载安装，不用进入 Actions 或解压构建产物。
+          Android arm64 修复候选包，云端原生测试、Flutter 回归、APK 编译及 Android 模块检查已通过；本机模拟器联网验收正在进行，本 Release 暂时标记为待验收。
 
-          应用 ID：com.beiming.flclash.urltestpro.dev。与官方 FlClash 独立，保留原版；启动此 VPN 前停止其他 VPN。
+          修复 StableFailover 的 IP1 候选页过滤问题，并允许已连接但未被 Android VALIDATED 标记的底层网络进行预算内检测。标准 TLS 与固定住宅出口校验保持开启。
 
-          包含固定住宅出口的三候选稳定切换、建立连接失败重试、后台检测，以及 4 MiB 循环日志 / 10 分钟调试 / 最大 2 MiB 诊断导出。
+          应用 ID：com.beiming.flclash.urltestpro.dev。使用原私有 IP1 stable-failover 配置。日志仍为 4 MiB 轮转，诊断导出不超过 2 MiB。
 
-          **这是测试签名版，真实手机和 ChatGPT SSL 问题仍需验证。普通 URLTest 配置不会自动启用稳定策略，需使用 stable-failover 配置。**
+          源码：d6592dc1e63da175da69b8d753a71a3df9cbddfb；[已通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38492440671)。校验文件与签名信息附在 Assets。真实手机 ChatGPT SSL 尚未验收。
 
-          [安装与配置说明](https://github.com/beiming183-cloud/Flclash-urltest-pro/blob/codex/stability-pro/docs/stability-pro/QUICKSTART.zh-CN.md)
-
-          构建来源：494c811b653e444300e2216552120e0ffe5bb2fc；[已通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38440611267)。校验文件与签名信息附在 Assets。
           NOTES
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 安卓测试版 · 2026-10-14' --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 修复候选 · 待模拟器验收' --notes-file release-notes.md
           fi
           gh release upload "$RELEASE_TAG" delivery/* --clobber
           gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file release-notes.md
