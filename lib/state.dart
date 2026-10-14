@@ -324,7 +324,6 @@ class GlobalState {
     await _handleFailedPreference();
     await _handlerDisclaimer();
     await _showCrashRecoveryTip();
-    await _showCrashlyticsTip();
     await container.read(coreActionProvider.notifier).startCore();
     if (!_didCrashOnPreviousExecution) {
       await container.read(setupActionProvider.notifier).initStatus();
@@ -379,23 +378,6 @@ class GlobalState {
           ),
         ) ??
         false;
-  }
-
-  Future<void> _showCrashlyticsTip() async {
-    if (!system.isAndroid) return;
-    if (container.read(
-      appSettingProvider.select((state) => state.crashlyticsTip),
-    )) {
-      return;
-    }
-    await showMessage(
-      title: currentAppLocalizations.dataCollectionTip,
-      cancelable: false,
-      message: TextSpan(text: currentAppLocalizations.dataCollectionContent),
-    );
-    container
-        .read(appSettingProvider.notifier)
-        .update((state) => state.copyWith(crashlyticsTip: true));
   }
 
   Future<void> _handlerDisclaimer() async {
