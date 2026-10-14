@@ -193,6 +193,9 @@ func (g *Conn) Close() error {
 		return nil
 	}
 	g.closed = true
+	if g.onClose != nil {
+		g.onClose()
+	}
 
 	var errorArr []error
 
@@ -212,10 +215,6 @@ func (g *Conn) Close() error {
 		if err := closer.Close(); err != nil {
 			errorArr = append(errorArr, err)
 		}
-	}
-
-	if g.onClose != nil {
-		g.onClose()
 	}
 
 	return errors.Join(errorArr...)
@@ -358,7 +357,8 @@ func (t *Transport) Dial() (net.Conn, error) {
 		ProtoMinor: 0,
 		Header:     header,
 	}
-	request = request.WithContext(t.ctx)
+	streamContext, cancelStream := context.WithCancel(t.ctx)
+	request = request.WithContext(streamContext)
 	initStarted := make(chan struct{})
 
 	conn := &Conn{
@@ -375,7 +375,10 @@ func (t *Transport) Dial() (net.Conn, error) {
 	}
 
 	t.count.Add(1)
-	conn.onClose = func() { t.count.Add(-1) }
+	conn.onClose = func() {
+		cancelStream()
+		t.count.Add(-1)
+	}
 
 	go conn.Init()
 
