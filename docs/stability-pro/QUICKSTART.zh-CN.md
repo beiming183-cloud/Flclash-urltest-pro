@@ -4,7 +4,7 @@
 
 在手机点击[修复版 APK 直接下载](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/download/stability-pro-test-20261014-v3/FlClash-URLTest-Pro-arm64-test.apk)。[Release 页面](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/tag/stability-pro-test-20261014-v3)另有 SHA256、签名证书和来源 commit 文件，便于核验。
 
-这次测试签名与旧包不同：先保留或导出配置，卸载旧 URLTest Pro 测试版，再安装修复版并重新导入原 IP1 文件。官方 FlClash 可以保留。首次启动等待首页出现主用节点后，再打开业务应用；三个候选会继续补齐。
+这次测试签名与旧包不同：先保留配置文件，卸载旧 URLTest Pro 测试版，再安装 v3 并重新导入原 IP1 文件。官方 FlClash可以保留。首次启动需要确认就绪时，从代理页右上角“更多”打开“住宅链路稳定模式”查看主用；默认首页保持官方布局，三个候选会在后台继续补齐。
 
 此包适用于 Android arm64，是测试签名版；applicationId 为 `com.beiming.flclash.urltestpro.dev`，与官方版数据隔离。安装本身不会导入住宅代理配置。启动定制 VPN 前停止手机上其他 VPN。
 
