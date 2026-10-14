@@ -155,7 +155,8 @@ void main() {
     expect(find.text('Residential chain stability'), findsOneWidget);
     expect(find.text('Export diagnostics (≤2 MiB)'), findsOneWidget);
     await tester.tap(find.text('Residential chain stability'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byType(StabilityView), findsOneWidget);
     expect(handler.stateReads, greaterThan(0));
     expect(_RecordingAction.tested, isEmpty);
