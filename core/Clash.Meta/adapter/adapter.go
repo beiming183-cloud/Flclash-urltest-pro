@@ -203,7 +203,7 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 
 	}()
 
-	unifiedDelay := UnifiedDelay.Load()
+	unifiedDelay := UnifiedDelay.Load() && p.Type() != C.StableFailover && !strings.HasPrefix(p.ProxyInfo().DialerProxy, "RF2-Relay-")
 
 	addr, err := urlToMetadata(url)
 	if err != nil {

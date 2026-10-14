@@ -21,8 +21,8 @@ jobs:
       - name: Native selection, recovery and export
         run: |
           cd core/Clash.Meta
-          go test -race -count=1 ./component/stability ./adapter/outboundgroup
-          go vet ./component/stability ./adapter/outboundgroup
+          go test -race -count=1 ./adapter ./component/stability ./adapter/outboundgroup
+          go vet ./adapter ./component/stability ./adapter/outboundgroup
           cd ..
           CGO_ENABLED=0 go test -count=1 .
           CGO_ENABLED=0 go vet .
