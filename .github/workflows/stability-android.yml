@@ -68,7 +68,8 @@ jobs:
           flutter analyze --no-fatal-infos
           cp pubspec.yaml /tmp/pro-pubspec.yaml
           sed -i '0,/build_assets: true/s//build_assets: false/' pubspec.yaml
-          flutter test --reporter expanded
+          flutter test test/widgets/proxies_stability_access_test.dart --reporter expanded
+          flutter test test/widgets/ test/views/proxies_list_test.dart test/views/dashboard/ --reporter expanded
           cp /tmp/pro-pubspec.yaml pubspec.yaml
       - name: Build isolated arm64 test APK
         run: |

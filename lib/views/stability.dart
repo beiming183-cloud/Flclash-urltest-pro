@@ -3,11 +3,50 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/icons/icons.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+Future<void> exportStabilityDiagnostics(CoreController core) async {
+  final data = await core.exportStabilityDiagnostics();
+  if (data == null) throw StateError('diagnostic export unavailable');
+  final bytes = base64Decode(data['base64'] as String);
+  if (bytes.length > 2 * 1024 * 1024 || bytes.length != data['size']) {
+    throw StateError('invalid diagnostic archive');
+  }
+  final path = '${await appPath.tempPath}/stability-diagnostic.zip';
+  final file = File(path);
+  try {
+    await file.writeAsBytes(bytes, flush: true);
+    await picker.saveFileWithPath('FlClash-stability-diagnostic.zip', path);
+  } finally {
+    if (await file.exists()) await file.delete();
+  }
+}
+
+class StabilityView extends StatelessWidget {
+  const StabilityView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CommonScaffold(
+      title: context.appLocalizations.stabilityTitle,
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          context.appBarInset,
+          16,
+          16 + BottomInsetScope.of(context),
+        ),
+        child: const StabilityPanel(),
+      ),
+    );
+  }
+}
 
 class StabilityPanel extends ConsumerStatefulWidget {
   const StabilityPanel({super.key});
@@ -101,24 +140,8 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
     if (!ok) throw StateError('stability mode not applied');
   }
 
-  Future<void> _export() async {
-    final data = await ref
-        .read(coreHandlerProvider)
-        .exportStabilityDiagnostics();
-    if (data == null) throw StateError('diagnostic export unavailable');
-    final bytes = base64Decode(data['base64'] as String);
-    if (bytes.length > 2 * 1024 * 1024 || bytes.length != data['size']) {
-      throw StateError('invalid diagnostic archive');
-    }
-    final path = '${await appPath.tempPath}/stability-diagnostic.zip';
-    final file = File(path);
-    try {
-      await file.writeAsBytes(bytes, flush: true);
-      await picker.saveFileWithPath('FlClash-stability-diagnostic.zip', path);
-    } finally {
-      if (await file.exists()) await file.delete();
-    }
-  }
+  Future<void> _export() =>
+      exportStabilityDiagnostics(ref.read(coreHandlerProvider));
 
   @override
   void dispose() {
@@ -178,6 +201,14 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
     final nodes = (state['nodes'] as List)
         .map((node) => Map<String, dynamic>.from(node as Map))
         .toList();
+    final visibleNodes = nodes
+        .where((node) => active.contains(node['id']))
+        .toList()
+      ..sort(
+        (a, b) => active.indexOf(a['id'] as String).compareTo(
+          active.indexOf(b['id'] as String),
+        ),
+      );
     final debug = (group['debugRemainingSec'] as num).toInt();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,19 +238,14 @@ class _StabilityPanelState extends ConsumerState<StabilityPanel>
           tilePadding: EdgeInsets.zero,
           title: Text('${l.stabilityCandidates} (${active.length}/3)'),
           children: [
-            for (final node
-                in nodes
-                    .where(
-                      (node) =>
-                          active.contains(node['id']) ||
-                          node['quarantined'] == true ||
-                          (DateTime.tryParse(
-                                node['coolingUntil'] as String? ?? '',
-                              )?.isAfter(DateTime.now()) ??
-                              false),
-                    )
-                    .take(12))
+            for (final node in visibleNodes)
               ListTile(
+                selected: node['id'] == primary,
+                leading: GlyphIcon(
+                  node['id'] == primary
+                      ? AppGlyphs.networkCheck
+                      : AppGlyphs.check,
+                ),
                 contentPadding: EdgeInsets.zero,
                 title: Text(names[node['id']] as String),
                 subtitle: Text(

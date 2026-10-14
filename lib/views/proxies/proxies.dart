@@ -9,6 +9,7 @@ import 'package:fl_clash/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../stability.dart';
 import 'setting.dart';
 import 'tab.dart';
 
@@ -23,6 +24,20 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
   final GlobalKey<ProxiesTabViewState> _proxiesTabKey = GlobalKey();
   bool _hasProviders = false;
   bool _isTab = false;
+  bool _exporting = false;
+
+  Future<void> _exportDiagnostics() async {
+    if (_exporting) return;
+    _exporting = true;
+    try {
+      await globalState.safeRun(
+        () => exportStabilityDiagnostics(ref.read(coreHandlerProvider)),
+        title: context.appLocalizations.stabilityExport,
+      );
+    } finally {
+      _exporting = false;
+    }
+  }
 
   List<CommonPopupMenuItem> _buildMenuItems(BuildContext context) {
     final appLocalizations = context.appLocalizations;
@@ -56,6 +71,18 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
             );
           },
         ),
+      CommonPopupMenuItem(
+        glyph: AppGlyphs.networkCheck,
+        label: appLocalizations.stabilityTitle,
+        onPressed: () {
+          showExtend(context, builder: (_) => const StabilityView());
+        },
+      ),
+      CommonPopupMenuItem(
+        glyph: AppGlyphs.export,
+        label: appLocalizations.stabilityExport,
+        onPressed: _exportDiagnostics,
+      ),
     ];
   }
 
