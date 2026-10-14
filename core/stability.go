@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -12,14 +13,18 @@ import (
 )
 
 type StabilityParams struct {
-	NetworkKey string `json:"networkKey"`
-	Online     bool   `json:"online"`
-	Group      string `json:"group"`
-	Node       string `json:"node"`
-	Paused     bool   `json:"paused"`
-	PowerSave  bool   `json:"powerSave"`
-	Debug      *bool  `json:"debug"`
+	NetworkKey             string `json:"networkKey"`
+	Online                 bool   `json:"online"`
+	Group                  string `json:"group"`
+	Node                   string `json:"node"`
+	Paused                 bool   `json:"paused"`
+	PowerSave              bool   `json:"powerSave"`
+	Debug                  *bool  `json:"debug"`
+	NotificationGeneration uint64 `json:"notificationGeneration"`
 }
+
+var stabilityNotificationMu sync.Mutex
+var stabilityNotificationGeneration uint64
 
 func init() {
 	outboundgroup.OnStableRouteChange = func() {
@@ -78,6 +83,13 @@ func handleStability(call *MethodCall, response MethodResponse) bool {
 			return true
 		}
 		if call.Method == stabilityNetworkChangedMethod {
+			stabilityNotificationMu.Lock()
+			defer stabilityNotificationMu.Unlock()
+			if params.NotificationGeneration > 0 && params.NotificationGeneration <= stabilityNotificationGeneration {
+				response.success(true)
+				return true
+			}
+			stabilityNotificationGeneration = params.NotificationGeneration
 			tunnel.StabilityNetworkChanged(params.NetworkKey, params.Online)
 			response.success(true)
 			return true

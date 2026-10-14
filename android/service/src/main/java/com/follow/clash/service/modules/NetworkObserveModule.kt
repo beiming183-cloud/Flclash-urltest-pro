@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities.TRANSPORT_SATELLITE
 import android.net.NetworkCapabilities.TRANSPORT_USB
 import android.net.NetworkRequest
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.getSystemService
 import com.follow.clash.core.Core
 import java.net.Inet4Address
@@ -101,10 +102,11 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
         val capabilities = network?.let { connectivity?.getNetworkCapabilities(it) }
         val online = network != null && capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val key = network?.networkHandle ?: stabilityNetwork
-        if (key != null && (key != stabilityNetwork || online != stabilityOnline)) {
+        if (key != null && (network == null || capabilities != null) && (key != stabilityNetwork || online != stabilityOnline)) {
             stabilityNetwork = key
             stabilityOnline = online
             val arguments = JSONObject().put("networkKey", key.toString()).put("online", online)
+                .put("notificationGeneration", SystemClock.elapsedRealtimeNanos())
             val call = JSONObject().put("method", "stabilityNetworkChanged").put("arguments", arguments)
             Core.invokeMethod(call.toString()) {}
         }

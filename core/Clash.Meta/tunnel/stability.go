@@ -20,7 +20,7 @@ func SetStabilityRunning(running bool) {
 	for _, p := range AllProxies() {
 		if g, ok := p.Adapter().(stabilityGroup); ok {
 			if running && stabilityOnline {
-				g.Start()
+				g.NetworkChanged(stabilityNetworkKey, true)
 			} else {
 				g.Stop()
 			}

@@ -7,8 +7,17 @@ import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 
-String stabilityStatusText(BuildContext context, String status) {
+String stabilityStatusText(BuildContext context, String status, {bool compact = false}) {
   final l10n = context.appLocalizations;
+  if (compact) {
+    return switch (status) {
+      'unexpected_exit' => l10n.stabilityExitShort,
+      'cert_untrusted' || 'cert_hostname' || 'cert_expired' => l10n.stabilityCertificateShort,
+      'stopped' => l10n.stabilityStoppedShort,
+      'validating' => l10n.stabilityValidatingShort,
+      _ => l10n.stabilityFailureShort,
+    };
+  }
   return switch (status) {
     'ready' => l10n.stabilityReady,
     'stopped' => l10n.stabilityStopped,
@@ -226,5 +235,5 @@ class _StabilityGroupDelayState extends State<StabilityGroupDelay> {
   @override
   Widget build(BuildContext context) => _status == 'ready'
       ? widget.child
-      : Text(stabilityStatusText(context, _status ?? 'validating'), style: context.textTheme.labelSmall);
+      : Text(stabilityStatusText(context, _status ?? 'validating', compact: true), maxLines: 1, overflow: TextOverflow.ellipsis, style: context.textTheme.labelSmall?.copyWith(color: _status == 'validating' || _status == null || _status == 'stopped' ? context.colorScheme.tertiary : context.colorScheme.error));
 }

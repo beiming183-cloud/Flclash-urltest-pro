@@ -591,5 +591,11 @@
         "type": "int"
       }
     }
-  }
+  },
+  "stabilityExitShort": "出口异常",
+  "stabilityCertificateShort": "证书异常",
+  "stabilityStoppedShort": "未启动",
+  "stabilityValidatingShort": "验证中",
+  "stabilityFailureShort": "检测异常",
+  "stabilityType": "稳定择优"
 }

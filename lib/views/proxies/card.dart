@@ -168,7 +168,7 @@ class ProxyCard extends StatelessWidget {
                           flex: 1,
                           child: TooltipText(
                             text: Text(
-                              proxy.type,
+                              proxy.type == 'StableFailover' ? context.appLocalizations.stabilityType : proxy.type,
                               style: context.textTheme.bodySmall?.copyWith(
                                 overflow: TextOverflow.ellipsis,
                                 color: context
