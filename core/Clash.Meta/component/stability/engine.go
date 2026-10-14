@@ -12,6 +12,7 @@ import (
 )
 
 const MaxCandidates = 512
+const latencyWindow = 12
 
 type Candidate struct {
 	ID      string `json:"id"`
@@ -52,6 +53,9 @@ type Stats struct {
 	Samples      []float64 `json:"-"`
 	EWMA         float64   `json:"ewmaMs"`
 	P95          float64   `json:"p95Ms"`
+	P50          float64   `json:"p50Ms"`
+	Jitter       float64   `json:"jitterMs"`
+	Recent       []bool    `json:"recentResults,omitempty"`
 	Lower        float64   `json:"reliabilityLower"`
 	Count        int       `json:"sampleCount"`
 	LastSuccess  time.Time `json:"lastSuccess"`
@@ -157,6 +161,32 @@ func (e *Engine) fresh(s *Stats, now time.Time) bool {
 	return e.ready(s, now) && now.Sub(s.LastSuccess) <= age
 }
 
+func CompetitionReady(s Stats) bool {
+	return s.Streak >= 3 && s.LastSuccess.Sub(s.FirstSuccess) >= 10*time.Second
+}
+
+func LatencyCost(s Stats) float64 {
+	if s.EWMA <= 0 || s.P95 <= 0 {
+		return math.Inf(1)
+	}
+	p50 := s.P50
+	if p50 <= 0 {
+		p50 = s.EWMA
+	}
+	jitter := math.Max(s.P95-p50, 0)
+	cost := .5*p50 + .3*s.P95 + .2*s.EWMA + .5*jitter
+	if len(s.Recent) > 0 {
+		failures := 0
+		for _, ok := range s.Recent {
+			if !ok {
+				failures++
+			}
+		}
+		cost *= 1 + 4*float64(failures)/float64(len(s.Recent))
+	}
+	return cost
+}
+
 func (e *Engine) choose(now time.Time) {
 	pool := []*Stats{}
 	for _, id := range e.order {
@@ -166,24 +196,12 @@ func (e *Engine) choose(now time.Time) {
 			pool = append(pool, s)
 		}
 	}
-	best := 0.0
-	for _, s := range pool {
-		if s.Lower > best {
-			best = s.Lower
-		}
-	}
 	sort.SliceStable(pool, func(i, j int) bool {
-		highI, highJ := pool[i].Lower >= best-.03, pool[j].Lower >= best-.03
-		if highI != highJ {
-			return highI
+		qualifiedI, qualifiedJ := CompetitionReady(*pool[i]), CompetitionReady(*pool[j])
+		if qualifiedI != qualifiedJ {
+			return qualifiedI
 		}
-		if !highI {
-			return pool[i].Lower > pool[j].Lower
-		}
-		if pool[i].P95 != pool[j].P95 {
-			return pool[i].P95 < pool[j].P95
-		}
-		return pool[i].EWMA < pool[j].EWMA
+		return LatencyCost(*pool[i]) < LatencyCost(*pool[j])
 	})
 	old := e.primary
 	if old != "" && !e.fresh(e.nodes[old], now) {
@@ -195,12 +213,13 @@ func (e *Engine) choose(now time.Time) {
 	if e.manual != "" && e.fresh(e.nodes[e.manual], now) {
 		e.primary = e.manual
 	}
-	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && now.Sub(e.lastSwitch) >= time.Minute {
+	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && now.Sub(e.lastSwitch) >= 30*time.Second {
 		current, better := e.nodes[e.primary], pool[0]
-		if better.ID != current.ID && better.Streak >= 3 && better.Lower >= current.Lower-.03 &&
-			better.P95 < current.P95*.7 && better.EWMA+150 < current.EWMA {
+		currentCost, betterCost := LatencyCost(*current), LatencyCost(*better)
+		if better.ID != current.ID && CompetitionReady(*better) &&
+			betterCost < currentCost*.88 && betterCost+25 < currentCost {
 			e.primary = better.ID
-			e.reason = "latency_improved"
+			e.reason = "latency_quality_improved"
 		}
 	}
 	e.active = nil
@@ -215,6 +234,9 @@ func (e *Engine) choose(now time.Time) {
 	}
 	for pass := 0; pass < 3 && len(e.active) < 3; pass++ {
 		for _, s := range pool {
+			if pass == 0 && len(pool) > 0 && LatencyCost(*s) > LatencyCost(*pool[0])*1.25+25 {
+				continue
+			}
 			if contains(e.active, s.ID) || (pass < 2 && relays[s.Relay]) || (pass == 0 && airports[s.Airport]) {
 				continue
 			}
@@ -259,6 +281,10 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		return false
 	}
 	e.decay(s, now)
+	s.Recent = append(s.Recent, sample.OK)
+	if len(s.Recent) > latencyWindow {
+		s.Recent = s.Recent[len(s.Recent)-latencyWindow:]
+	}
 	s.LastCheck = now
 	s.LastPhase = sample.Phase
 	s.LastService = sample.Service
@@ -290,12 +316,14 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 				s.EWMA = .2*ms + .8*s.EWMA
 			}
 			s.Samples = append(s.Samples, ms)
-			if len(s.Samples) > 64 {
+			if len(s.Samples) > latencyWindow {
 				s.Samples = s.Samples[1:]
 			}
 			sorted := append([]float64(nil), s.Samples...)
 			sort.Float64s(sorted)
 			s.P95 = sorted[int(math.Ceil(.95*float64(len(sorted))))-1]
+			s.P50 = sorted[(len(sorted)-1)/2]
+			s.Jitter = math.Max(s.P95-s.P50, 0)
 		}
 	} else {
 		s.Failure++
@@ -438,6 +466,10 @@ func (e *Engine) Invalidate() {
 		s.LastSuccess = time.Time{}
 		s.LastCheck = time.Time{}
 		s.LastError = ""
+		s.Recent = nil
+		s.Samples = nil
+		s.P50 = 0
+		s.Jitter = 0
 		s.Quarantined = false
 		s.CoolingUntil = time.Time{}
 		s.Failures = 0

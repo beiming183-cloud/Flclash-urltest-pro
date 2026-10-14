@@ -1,7 +1,7 @@
 name: FlClash 0.8.96 stability validation
 on:
   push:
-    branches: ['codex/stability-096']
+    branches: ['codex/stability-096', 'codex/latency-quality-096']
   workflow_dispatch:
 permissions:
   contents: read

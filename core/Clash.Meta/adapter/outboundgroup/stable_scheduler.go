@@ -37,6 +37,52 @@ func (s *Stable) pending(id string) bool {
 	return s.scheduled[id] || s.probing[id]
 }
 
+func competitionCandidate(state stability.Snapshot, now time.Time, pending func(string) bool) string {
+	active := map[string]bool{}
+	worstCost := 0.0
+	for _, id := range state.Active {
+		active[id] = true
+		for _, node := range state.Nodes {
+			if node.ID == id {
+				if cost := stability.LatencyCost(node); cost > worstCost {
+					worstCost = cost
+				}
+			}
+		}
+	}
+	candidates := []stability.Stats{}
+	for _, node := range state.Nodes {
+		if active[node.ID] || pending(node.ID) || node.Quarantined || now.Before(node.CoolingUntil) || now.Sub(node.LastCheck) < 5*time.Second {
+			continue
+		}
+		good := node.LastError == "" && !node.LastSuccess.IsZero() && now.Sub(node.LastSuccess) < 90*time.Second
+		needsValidation := node.TLSAt.IsZero() || node.ExitAt.IsZero()
+		if !needsValidation && stability.CompetitionReady(node) {
+			continue
+		}
+		if len(state.Active) >= 3 && (!good || stability.LatencyCost(node)+15 >= worstCost) {
+			continue
+		}
+		candidates = append(candidates, node)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		progressA := !a.LastSuccess.IsZero() && a.LastError == "" && now.Sub(a.LastSuccess) < 90*time.Second
+		progressB := !b.LastSuccess.IsZero() && b.LastError == "" && now.Sub(b.LastSuccess) < 90*time.Second
+		if progressA != progressB {
+			return progressA
+		}
+		if stability.LatencyCost(a) != stability.LatencyCost(b) {
+			return stability.LatencyCost(a) < stability.LatencyCost(b)
+		}
+		return a.LastCheck.Before(b.LastCheck)
+	})
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0].ID
+}
+
 func (s *Stable) launchProbe(ctx context.Context, id string, verify bool) bool {
 	s.mu.Lock()
 	if s.cancel == nil || s.scheduled[id] || s.probing[id] || len(s.scheduled) >= 2 {
@@ -66,7 +112,7 @@ func (s *Stable) schedule(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	lastExplore := time.Time{}
-	warmIndex, coldIndex := 0, 0
+	coldIndex := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -96,9 +142,9 @@ func (s *Stable) schedule(ctx context.Context) {
 					break
 				}
 				for _, node := range state.Nodes {
-					interval := 30 * time.Second
+					interval := 20 * time.Second
 					if id == state.Primary {
-						interval = 15 * time.Second
+						interval = 10 * time.Second
 					}
 					if state.PowerSave {
 						interval *= 3
@@ -112,33 +158,10 @@ func (s *Stable) schedule(ctx context.Context) {
 					break
 				}
 			}
-			ordered := append([]stability.Stats(nil), state.Nodes...)
-			sort.SliceStable(ordered, func(i, j int) bool {
-				a, b := ordered[i], ordered[j]
-				goodA := a.LastError == "" && !a.LastSuccess.IsZero() && now.Sub(a.LastSuccess) < 90*time.Second
-				goodB := b.LastError == "" && !b.LastSuccess.IsZero() && now.Sub(b.LastSuccess) < 90*time.Second
-				if goodA != goodB {
-					return goodA
-				}
-				return goodA && a.EWMA < b.EWMA
-			})
-			if task == "" && len(state.Active) < 3 && state.BudgetUsed < 600 {
-				for n := 0; n < len(ordered); n++ {
-					i := warmIndex % len(ordered)
-					warmIndex++
-					node := ordered[i]
-					if i >= 20 {
-						continue
-					}
-					needsValidation := node.TLSAt.IsZero() || node.ExitAt.IsZero()
-					warming := node.Streak < 3 && now.Sub(node.LastCheck) >= 5*time.Second
-					if !s.pending(node.ID) && !node.Quarantined && !now.Before(node.CoolingUntil) && (needsValidation || warming) && now.Sub(node.LastCheck) >= 5*time.Second {
-						task = node.ID
-						break
-					}
-				}
+			if task == "" && state.BudgetUsed < 780 {
+				task = competitionCandidate(state, now, s.pending)
 			}
-			if task == "" && state.BudgetUsed < 600 && now.Sub(lastExplore) >= time.Minute {
+			if task == "" && state.BudgetUsed < 780 && now.Sub(lastExplore) >= time.Minute {
 				for n := 0; n < len(state.Nodes); n++ {
 					node := state.Nodes[coldIndex%len(state.Nodes)]
 					coldIndex++

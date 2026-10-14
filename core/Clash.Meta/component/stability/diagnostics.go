@@ -59,7 +59,7 @@ var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_f
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
-	for _, reason := range []string{"https_timeout", "tls_handshake_timeout", "exit_query_timeout", "latency_improved"} {
+	for _, reason := range []string{"https_timeout", "tls_handshake_timeout", "exit_query_timeout", "latency_improved", "latency_quality_improved"} {
 		reasons[reason] = true
 	}
 }

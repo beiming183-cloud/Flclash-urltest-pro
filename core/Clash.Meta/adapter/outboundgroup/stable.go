@@ -422,11 +422,11 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		if !containsStable(s.engine.Attempts(), id) {
 			continue
 		}
-		timeout := 5 * time.Second
+		timeout := 4 * time.Second
 		for _, node := range state.Nodes {
 			if node.ID == id && node.P95 > 0 {
-				timeout = time.Duration(node.P95*3)*time.Millisecond + 3*time.Second
-				timeout = max(3*time.Second, min(timeout, 5*time.Second))
+				timeout = time.Duration(node.P95*3)*time.Millisecond + 750*time.Millisecond
+				timeout = max(1500*time.Millisecond, min(timeout, 4*time.Second))
 			}
 		}
 		attempt, release := context.WithTimeout(ctx, timeout)
