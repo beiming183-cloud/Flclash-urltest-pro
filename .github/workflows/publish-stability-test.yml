@@ -61,20 +61,26 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<'NOTES'
-          Android arm64 原版操作保留版候选包。最新官方 FlClash v0.8.99 的首页、代理标签、节点卡片和一键测速逻辑逐项源码比对一致；界面回归、APK 编译与 Android 检查已通过，本机模拟器复测进行中。
+          **保留原版操作的 v3 修复测试版**。手机点击下方 Assets 的 FlClash-URLTest-Pro-arm64-test.apk 下载。
 
-          首页大面板已移除。代理页原有闪电测速、节点点选、搜索、排序和导航保留，只在右上角“更多”新增“住宅链路稳定模式”和“导出诊断”两个入口。稳定页只显示主用及两个在线备用，主用突出显示。
+          基于最新官方 v0.8.99，原版首页、代理标签、节点卡片和一键测速逻辑逐项源码比对一致。首页大面板已移除，测速、点选、搜索、排序及导航保留。
 
-          私有 IP1 文件继续沿用；应用 ID：com.beiming.flclash.urltestpro.dev，build number：2026101403。测试签名不同，安装前保留原配置文件，卸载旧 URLTest Pro 测试版后重装；官方 FlClash 可保留。
+          日常仍在代理页点原闪电按钮一键测速、看卡片 ms 和点选节点；右上角“更多”只增加两个入口：**住宅链路稳定模式**和**导出诊断**。详细状态按需打开，主用优先显示，只列出三个合格在线候选。
 
-          日志仍为 4 MiB 轮转，单次导出不超过 2 MiB。固定住宅出口和 TLS 验证保持开启，真实手机 ChatGPT SSL 尚未验收。
+          本机 APK 实测通过：原版首页、一键测速并返回卡片延迟、合格节点点选、新菜单及状态页、三个候选、固定住宅出口 HTTPS、直接导出 5977 字节诊断，实际凭据扫描通过。稳定组仍拒绝已失效的 TLS/出口资格；普通 Selector/URLTest 的原版逻辑未修改。
 
-          源码：cb51ad277ec87fe41da32ff0712da65ff2c225e5；[通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38499345176)。源码、签名与摘要文件附在 Assets。
+          测试签名不同，先保留原 IP1 配置文件，卸载旧 URLTest Pro 测试版后安装 v3，再导入原文件；官方 FlClash 可保留。应用 ID：com.beiming.flclash.urltestpro.dev，build number：2026101403。
+
+          日志为 4 MiB 轮转，单次导出不超过 2 MiB。真实手机 ChatGPT SSL 尚未验收，不承诺既有流式连接无缝迁移。
+
+          [v3 使用与实测说明](https://github.com/beiming183-cloud/Flclash-urltest-pro/blob/codex/stability-pro/docs/stability-pro/OFFICIAL_UI_V3.zh-CN.md)
+
+          源码 cb51ad277ec87fe41da32ff0712da65ff2c225e5；[通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38499345176)。APK SHA256：7228d60e6ab54b33f0228c93684a9f84cb83106be2c1a1068a7fe83ba270c60e。
 
           NOTES
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 原版操作保留 v3 · 待模拟器验收' --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 原版操作保留 v3 · 模拟器验收通过' --notes-file release-notes.md
           fi
           gh release upload "$RELEASE_TAG" delivery/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --title 'FlClash URLTest Pro 原版操作保留 v3 · 待模拟器验收' --notes-file release-notes.md
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --title 'FlClash URLTest Pro 原版操作保留 v3 · 模拟器验收通过' --notes-file release-notes.md
           gh release view "$RELEASE_TAG" --json url,assets,isDraft,isPrerelease
