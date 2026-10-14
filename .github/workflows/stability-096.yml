@@ -64,6 +64,7 @@ jobs:
       - name: Build isolated APK
         run: |
           printf '{"APP_ENV":"pre"}\n' > env.json
+          make core-android ARCH=arm64
           flutter build apk --release --target-platform android-arm64 --dart-define-from-file=env.json
           cd android
           ./gradlew :service:compileDebugKotlin :app:compileDebugKotlin -x :app:compileFlutterBuildDebug -x :app:copyFlutterAssetsDebug
