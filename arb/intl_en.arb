@@ -553,5 +553,43 @@
   "geoSkipped": "{name} is already up to date",
   "geoUpdated": "{name} updated",
   "secondsCount": "{count} seconds",
-  "entriesCount": "{count} entries"
+  "entriesCount": "{count} entries",
+  "stabilityTitle": "Residential stability",
+  "stabilityExport": "Export diagnostics",
+  "stabilityReady": "Connected",
+  "stabilityStopped": "VPN stopped",
+  "stabilityWrongExit": "Exit IP does not match",
+  "stabilityExitTimeout": "Exit verification timed out",
+  "stabilityCertificate": "Certificate verification failed",
+  "stabilityTlsTimeout": "TLS handshake failed",
+  "stabilityDelayTimeout": "Chain check timed out",
+  "stabilityAuthentication": "Residential connection rejected",
+  "stabilityBudget": "Waiting for check budget",
+  "stabilityValidating": "Verifying chain",
+  "stabilityUnavailable": "Unable to read stability status",
+  "stabilityMeasurement": "Complete-chain delay; exit verification shown separately.",
+  "stabilityAutomatic": "Automatic failover",
+  "stabilityPowerSave": "Less frequent background checks",
+  "stabilityPrimary": "Primary",
+  "stabilityBackup": "Backup",
+  "stabilityVerified": "Exit verified",
+  "stabilityWaiting": "Verifying a usable primary and backups.",
+  "stabilityMark": "Mark fault and record for 10 minutes",
+  "stabilityNoGroup": "No stability group. Ordinary proxy groups keep their original behavior.",
+  "stabilityAge": "Checked {seconds}s ago",
+  "@stabilityAge": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityDebug": "Detailed logging: {seconds}s remaining",
+  "@stabilityDebug": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  }
 }

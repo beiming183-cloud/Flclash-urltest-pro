@@ -7,6 +7,7 @@ import 'package:fl_clash/views/proxies/common.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../stability.dart';
 
 class ProxyCard extends StatelessWidget {
   final String groupName;
@@ -119,7 +120,10 @@ class ProxyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final measure = globalState.measure;
-    final delayText = _buildDelayText();
+    final originalDelayText = _buildDelayText();
+    final delayText = proxy.type == 'StableFailover'
+        ? StabilityGroupDelay(group: proxy.name, child: originalDelayText)
+        : originalDelayText;
     final proxyNameText = _buildProxyNameText(context);
     return Stack(
       children: [

@@ -11,6 +11,11 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart';
 
 class CoreController {
+  Future<List<dynamic>> getStabilityState() => _interface.getStabilityState();
+  Future<bool> setStabilityMode(Map<String, dynamic> params) => _interface.setStabilityMode(params);
+  Future<Map<String, dynamic>?> probeStabilityCandidate(Map<String, dynamic> params) => _interface.probeStabilityCandidate(params);
+  Future<bool> markStabilityFault(String group) => _interface.markStabilityFault(group);
+  Future<Map<String, dynamic>?> exportStabilityDiagnostics() => _interface.exportStabilityDiagnostics();
   static CoreController? _instance;
   late CoreHandlerInterface _interface;
 

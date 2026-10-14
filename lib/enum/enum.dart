@@ -57,7 +57,7 @@ enum GroupType {
 
   static GroupType parse(String type) {
     return switch (type.toLowerCase()) {
-      'url-test' || 'urltest' => URLTest,
+      'url-test' || 'urltest' || 'stable-failover' || 'stablefailover' => URLTest,
       'select' || 'selector' => Selector,
       'fallback' => Fallback,
       'load-balance' || 'loadbalance' => LoadBalance,
@@ -76,6 +76,7 @@ extension GroupTypeExtension on GroupType {
   }
 
   static GroupType? getGroupType(String value) {
+    if (value == 'StableFailover') return GroupType.URLTest;
     final index = GroupTypeExtension.valueList.indexOf(value);
     if (index == -1) return null;
     return GroupType.values[index];
@@ -135,7 +136,7 @@ enum ResultType {
   error,
 }
 
-enum CoreEventType { log, delay, request, loaded, crash, geoUpdate }
+enum CoreEventType { log, delay, request, loaded, crash, geoUpdate, stability }
 
 enum InvokeMessageType { protect, process }
 

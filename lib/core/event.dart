@@ -25,6 +25,7 @@ abstract mixin class CoreEventListener {
   void onLog(Log log) {}
 
   void onDelay(Delay delay) {}
+  void onStability() {}
 
   void onRequest(TrackerInfo connection) {}
 
@@ -53,6 +54,9 @@ class CoreEventManager {
               break;
             case CoreEventType.delay:
               listener.onDelay(Delay.fromJson(event.data));
+              break;
+            case CoreEventType.stability:
+              listener.onStability();
               break;
             case CoreEventType.request:
               listener.onRequest(TrackerInfo.fromJson(event.data));

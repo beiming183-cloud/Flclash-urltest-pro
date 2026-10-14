@@ -11,6 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'setting.dart';
 import 'tab.dart';
+import '../stability.dart';
+import 'package:fl_clash/state.dart';
 
 class ProxiesView extends ConsumerStatefulWidget {
   const ProxiesView({super.key});
@@ -46,6 +48,16 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
         },
         popup: CommonPopupMenu(
           items: [
+            PopupMenuItemData(
+              icon: Icons.health_and_safety_outlined,
+              label: appLocalizations.stabilityTitle,
+              onPressed: () => showExtend(context, builder: (_) => const StabilityView()),
+            ),
+            PopupMenuItemData(
+              icon: Icons.file_upload_outlined,
+              label: appLocalizations.stabilityExport,
+              onPressed: () => globalState.safeRun(exportStabilityDiagnostics),
+            ),
             PopupMenuItemData(
               icon: Icons.tune,
               label: appLocalizations.settings,

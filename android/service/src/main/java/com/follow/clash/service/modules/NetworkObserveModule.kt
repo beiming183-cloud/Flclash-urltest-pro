@@ -15,6 +15,7 @@ import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONObject
 
 private data class NetworkInfo(
     @Volatile var losingUntilMillis: Long = 0,
@@ -31,6 +32,8 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
         service.getSystemService<ConnectivityManager>()
     }
     private var currentDnsList = listOf<String>()
+    private var stabilityNetwork: Long? = null
+    private var stabilityOnline = false
 
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -61,6 +64,10 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
             networkInfos[network]?.dnsList = linkProperties.dnsServers
             updateDns()
         }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            updateDns()
+        }
     }
 
     override fun start() {
@@ -89,9 +96,19 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 
     @Synchronized
     private fun updateDns() {
-        val dnsList = networkInfos.asSequence()
-            .minByOrNull(::networkPriority)
-            ?.value
+        val selected = networkInfos.asSequence().minByOrNull(::networkPriority)
+        val network = selected?.key
+        val capabilities = network?.let { connectivity?.getNetworkCapabilities(it) }
+        val online = network != null && capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        val key = network?.networkHandle ?: stabilityNetwork
+        if (key != null && (key != stabilityNetwork || online != stabilityOnline)) {
+            stabilityNetwork = key
+            stabilityOnline = online
+            val arguments = JSONObject().put("networkKey", key.toString()).put("online", online)
+            val call = JSONObject().put("method", "stabilityNetworkChanged").put("arguments", arguments)
+            Core.invokeMethod(call.toString()) {}
+        }
+        val dnsList = selected?.value
             ?.dnsList
             .orEmpty()
             .map { address -> address.asSocketAddressText(DNS_PORT) }

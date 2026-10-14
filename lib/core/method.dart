@@ -36,6 +36,11 @@ enum CoreMethod {
   setupConfig,
   clearEffect,
   updateDns,
+  getStabilityState,
+  setStabilityMode,
+  probeStabilityCandidate,
+  markStabilityFault,
+  exportStabilityDiagnostics,
 }
 
 class CoreMethodCall {

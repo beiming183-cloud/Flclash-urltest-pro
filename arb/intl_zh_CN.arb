@@ -553,5 +553,43 @@
   "geoSkipped": "{name} 已是最新版本",
   "geoUpdated": "{name} 已更新",
   "secondsCount": "{count} 秒",
-  "entriesCount": "{count} 个条目"
+  "entriesCount": "{count} 个条目",
+  "stabilityTitle": "住宅链路稳定模式",
+  "stabilityExport": "导出诊断",
+  "stabilityReady": "已连接",
+  "stabilityStopped": "VPN 未启动",
+  "stabilityWrongExit": "出口 IP 不符合绑定",
+  "stabilityExitTimeout": "出口验证超时",
+  "stabilityCertificate": "证书验证失败",
+  "stabilityTlsTimeout": "TLS 握手失败",
+  "stabilityDelayTimeout": "链路检测超时",
+  "stabilityAuthentication": "住宅认证或连接被拒绝",
+  "stabilityBudget": "等待检测预算恢复",
+  "stabilityValidating": "正在验证链路",
+  "stabilityUnavailable": "无法读取稳定模式状态",
+  "stabilityMeasurement": "完整链路延迟，出口验证单独判断。",
+  "stabilityAutomatic": "自动择优与故障切换",
+  "stabilityPowerSave": "省电检测",
+  "stabilityPrimary": "主用",
+  "stabilityBackup": "备用",
+  "stabilityVerified": "出口已验证",
+  "stabilityWaiting": "正在验证可用主用与备用。",
+  "stabilityMark": "标记故障并详细记录 10 分钟",
+  "stabilityNoGroup": "当前配置没有稳定组，普通代理组保持原有行为。",
+  "stabilityAge": "{seconds} 秒前检测",
+  "@stabilityAge": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityDebug": "详细记录还剩 {seconds} 秒",
+  "@stabilityDebug": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  }
 }

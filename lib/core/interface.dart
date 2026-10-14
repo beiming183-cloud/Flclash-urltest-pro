@@ -80,6 +80,21 @@ mixin CoreInterface {
 }
 
 abstract class CoreHandlerInterface with CoreInterface {
+  Future<List<dynamic>> getStabilityState() async =>
+      await _invokeMethod<List<dynamic>>(method: CoreMethod.getStabilityState) ?? [];
+
+  Future<bool> setStabilityMode(Map<String, dynamic> params) async =>
+      await _invokeMethod<bool>(method: CoreMethod.setStabilityMode, arguments: params) ?? false;
+
+  Future<Map<String, dynamic>?> probeStabilityCandidate(Map<String, dynamic> params) =>
+      _invokeMethod<Map<String, dynamic>>(method: CoreMethod.probeStabilityCandidate, arguments: params, timeout: const Duration(seconds: 22));
+
+  Future<bool> markStabilityFault(String group) async =>
+      await _invokeMethod<bool>(method: CoreMethod.markStabilityFault, arguments: {'group': group}) ?? false;
+
+  Future<Map<String, dynamic>?> exportStabilityDiagnostics() =>
+      _invokeMethod<Map<String, dynamic>>(method: CoreMethod.exportStabilityDiagnostics);
+
   Future<T?> _invokeMethod<T>({
     required CoreMethod method,
     Object? arguments,

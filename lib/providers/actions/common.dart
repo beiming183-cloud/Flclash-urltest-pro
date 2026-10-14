@@ -44,11 +44,7 @@ class CommonAction extends _$CommonAction {
     }
   }
 
-  Future<void> autoCheckUpdate() async {
-    if (!ref.read(appSettingProvider).autoCheckUpdate) return;
-    final res = await request.checkForUpdate();
-    checkUpdateResultHandle(data: res);
-  }
+  Future<void> autoCheckUpdate() async {}
 
   Future<void> checkUpdateResultHandle({
     Map<String, dynamic>? data,

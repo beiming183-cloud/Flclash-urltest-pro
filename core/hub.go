@@ -50,6 +50,7 @@ func handleStartListener() bool {
 	defer runLock.Unlock()
 	isRunning = true
 	updateListeners()
+	tunnel.SetStabilityRunning(true)
 	resolver.ResetConnection()
 	return true
 }
@@ -58,6 +59,7 @@ func handleStopListener() bool {
 	runLock.Lock()
 	defer runLock.Unlock()
 	isRunning = false
+	tunnel.SetStabilityRunning(false)
 	listener.StopListener()
 	resolver.ResetConnection()
 	return true
@@ -76,6 +78,7 @@ func handleForceGC() {
 }
 
 func handleShutdown() bool {
+	tunnel.SetStabilityRunning(false)
 	stopListeners()
 	executor.Shutdown()
 	handleForceGC()
@@ -114,7 +117,7 @@ func handleGetProxies() ProxiesData {
 			continue
 		}
 		switch p.Type() {
-		case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance:
+		case constant.Selector, constant.URLTest, constant.Fallback, constant.Relay, constant.LoadBalance, constant.StableFailover:
 			allNames = append(allNames, name)
 		default:
 		}
@@ -481,6 +484,7 @@ func handleSetupConfig(params *SetupParams) string {
 
 func init() {
 	adapter.UrlTestHook = func(url string, name string, delay uint16) {
+		tunnel.StabilityDelay(name, url, delay)
 		delayData := &Delay{
 			Url:  url,
 			Name: name,

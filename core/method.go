@@ -89,6 +89,9 @@ func handleMethodCall(call *MethodCall, response MethodResponse) {
 			response.failure("internal_error", fmt.Sprintf("internal panic: %v", r), nil)
 		}
 	}()
+	if handleStability(call, response) {
+		return
+	}
 	switch call.Method {
 	case initClashMethod:
 		params := InitParams{}

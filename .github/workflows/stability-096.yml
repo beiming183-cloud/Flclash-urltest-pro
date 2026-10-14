@@ -1,0 +1,88 @@
+name: FlClash 0.8.96 stability validation
+on:
+  push:
+    branches: ['codex/stability-096']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stability-096-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: core/go.sum
+      - name: Native selection, recovery and export
+        run: |
+          cd core/Clash.Meta
+          go test -race -count=1 ./component/stability ./adapter/outboundgroup
+          go vet ./component/stability ./adapter/outboundgroup
+          cd ..
+          CGO_ENABLED=0 go test -count=1 .
+          CGO_ENABLED=0 go vet .
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: core/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          cache: true
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Android native tools
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+          printf 'ANDROID_NDK_HOME=%s/ndk/28.2.13676358\nANDROID_NDK_ROOT=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" >> "$GITHUB_ENV"
+          rustup target add aarch64-linux-android
+      - name: Generate and validate
+        run: |
+          flutter pub get
+          dart run intl_utils:generate
+          dart run build_runner build --delete-conflicting-outputs
+          dart format lib/views/stability.dart lib/views/proxies/proxies.dart lib/views/proxies/card.dart lib/core/controller.dart lib/core/interface.dart lib/core/method.dart lib/core/event.dart lib/manager/core_manager.dart lib/enum/enum.dart lib/providers/actions/common.dart
+          flutter analyze --no-fatal-infos > flutter-analysis.log 2>&1 || { cat flutter-analysis.log; exit 1; }
+          flutter test test/core/protocol_contract_test.dart test/core/desktop/ test/providers/action_test.dart test/widgets/ --reporter expanded
+      - name: Build isolated APK
+        run: |
+          printf '{"APP_ENV":"pre"}\n' > env.json
+          flutter build apk --release --target-platform android-arm64 --dart-define-from-file=env.json
+          cd android
+          ./gradlew :service:compileDebugKotlin :app:compileDebugKotlin -x :app:compileFlutterBuildDebug -x :app:copyFlutterAssetsDebug
+      - name: Collect private emulator candidate
+        run: |
+          mkdir -p build/pro-delivery
+          cp build/app/outputs/flutter-apk/app-release.apk build/pro-delivery/FlClash-0.8.96-Pro-arm64.apk
+          sha256sum build/pro-delivery/*.apk > build/pro-delivery/SHA256SUMS.txt
+          git rev-parse HEAD > build/pro-delivery/SOURCE_COMMIT.txt
+          tar -czf build/pro-delivery/generated-source.tar.gz lib/l10n lib/models/generated lib/providers/generated lib/database/generated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-0.8.96-Pro-candidate
+          path: build/pro-delivery/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: FlClash-096-build-failure
+          path: |
+            flutter-analysis.log
+            .dart_tool/setup_build_cache/hook.log

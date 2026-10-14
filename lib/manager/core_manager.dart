@@ -75,6 +75,12 @@ class _CoreContainerState extends ConsumerState<CoreManager>
   }
 
   @override
+  void onStability() {
+    ref.read(proxiesActionProvider.notifier).updateGroupsDebounce(const Duration(milliseconds: 100));
+    ref.read(checkIpNumProvider.notifier).add();
+  }
+
+  @override
   void onLog(Log log) {
     ref.read(logsProvider.notifier).add(log);
     if (log.logLevel == LogLevel.error) {
