@@ -17,9 +17,9 @@ Future<WebsiteProbeResult> probeWebsite(Uri uri, int port) async {
   if (uri.scheme != 'https' || uri.host.isEmpty || port < 1 || port > 65535) {
     return const WebsiteProbeResult(WebsiteProbeState.failed);
   }
-  final client = HttpClient()
-    ..findProxy = (_) => 'PROXY 127.0.0.1:$port'
-    ..connectionTimeout = const Duration(seconds: 5);
+  final client = HttpClient();
+  client.findProxy = (_) => 'PROXY 127.0.0.1:$port';
+  client.connectionTimeout = const Duration(seconds: 5);
   final stopwatch = Stopwatch()..start();
   try {
     return await (() async {

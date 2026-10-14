@@ -92,41 +92,9 @@ class _WebsiteTestPanelState extends State<WebsiteTestPanel> {
   }
 
   Future<void> _addWebsite(BuildContext dialogContext) async {
-    final controller = TextEditingController(text: 'https://');
-    String? error;
     final url = await showDialog<String>(
       context: dialogContext,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(context.appLocalizations.websiteTestAdd),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: TextInputType.url,
-            decoration: InputDecoration(
-              labelText: context.appLocalizations.websiteTestUrl,
-              errorText: error,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.appLocalizations.cancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                final uri = Uri.tryParse(controller.text.trim());
-                if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
-                  setDialogState(() => error = context.appLocalizations.websiteTestInvalidUrl);
-                  return;
-                }
-                Navigator.pop(context, uri.toString());
-              },
-              child: Text(context.appLocalizations.add),
-            ),
-          ],
-        ),
-      ),
+      builder: (context) => const _WebsiteUrlDialog(),
     );
     if (mounted && url != null && !_sites.any((site) => site.url == url)) {
       _sites.add(_Website(Uri.parse(url).host, url, null, Colors.blue));
@@ -199,7 +167,7 @@ class _WebsiteTestPanelState extends State<WebsiteTestPanel> {
                 SizedBox(
                   height: 24,
                   child: pending
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
                       : Text(
                           _label(context, site),
                           maxLines: 1,
@@ -264,4 +232,55 @@ class _WebsiteTestPanelState extends State<WebsiteTestPanel> {
 
   @override
   Widget build(BuildContext context) => CommonCard(child: _content(context));
+}
+
+class _WebsiteUrlDialog extends StatefulWidget {
+  const _WebsiteUrlDialog();
+
+  @override
+  State<_WebsiteUrlDialog> createState() => _WebsiteUrlDialogState();
+}
+
+class _WebsiteUrlDialogState extends State<_WebsiteUrlDialog> {
+  final _controller = TextEditingController(text: 'https://');
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final uri = Uri.tryParse(_controller.text.trim());
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+      setState(() => _error = context.appLocalizations.websiteTestInvalidUrl);
+      return;
+    }
+    Navigator.pop(context, uri.toString());
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(context.appLocalizations.websiteTestAdd),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      keyboardType: TextInputType.url,
+      decoration: InputDecoration(
+        labelText: context.appLocalizations.websiteTestUrl,
+        errorText: _error,
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(context.appLocalizations.cancel),
+      ),
+      FilledButton(
+        onPressed: _submit,
+        child: Text(context.appLocalizations.add),
+      ),
+    ],
+  );
 }
