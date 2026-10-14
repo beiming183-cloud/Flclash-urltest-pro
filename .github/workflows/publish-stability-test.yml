@@ -61,18 +61,24 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<'NOTES'
-          Android arm64 修复候选包，云端原生测试、Flutter 回归、APK 编译及 Android 模块检查已通过；本机模拟器联网验收正在进行，本 Release 暂时标记为待验收。
+          手机直接点击下方 Assets 的 **FlClash-URLTest-Pro-arm64-test.apk** 下载。Android arm64 修复测试版，云端检查和本机模拟器原始网络条件复测已通过。
 
-          修复 StableFailover 的 IP1 候选页过滤问题，并允许已连接但未被 Android VALIDATED 标记的底层网络进行预算内检测。标准 TLS 与固定住宅出口校验保持开启。
+          **安装：本次测试签名不同。先保留或导出配置，卸载旧 URLTest Pro 测试版，再安装本版本并重新导入原 IP1 文件。官方 FlClash 可保留。** 首次启动等待首页出现主用节点后，再打开 ChatGPT 等业务应用。
 
-          应用 ID：com.beiming.flclash.urltestpro.dev。使用原私有 IP1 stable-failover 配置。日志仍为 4 MiB 轮转，诊断导出不超过 2 MiB。
+          修复 IP1 StableFailover 候选页被过滤，以及底层已连接但未被 Android VALIDATED 标记时检测停止的问题。标准 TLS 与固定住宅出口验证保持开启。
 
-          源码：d6592dc1e63da175da69b8d753a71a3df9cbddfb；[已通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38492440671)。校验文件与签名信息附在 Assets。真实手机 ChatGPT SSL 尚未验收。
+          实测：IP1 候选页恢复、主用和三个合格候选出现、真实 HTTPS 固定出口一致；返回 Android 首页后原生检测计数 53→77；导出可解析诊断 5220 字节，实际凭据扫描通过。日志仍为 4 MiB 轮转，诊断导出不超过 2 MiB。
+
+          **真实手机 ChatGPT SSL 仍需验证，未承诺既有流式连接无缝迁移。** 应用 ID：com.beiming.flclash.urltestpro.dev；build number：2026101402。
+
+          [修复与实测记录](https://github.com/beiming183-cloud/Flclash-urltest-pro/blob/codex/stability-pro/docs/stability-pro/CLIENT_FIX_20261014.zh-CN.md)
+
+          源码：d6592dc1e63da175da69b8d753a71a3df9cbddfb；[通过的构建](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/runs/38492440671)。APK SHA256：c6f975e962623d83970619830d60077074051a6ea936efc2c48ba3c0894323d6。校验文件与签名信息附在 Assets。
 
           NOTES
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 修复候选 · 待模拟器验收' --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" --target "$SOURCE_COMMIT" --draft --prerelease --title 'FlClash URLTest Pro 修复版 v2 · 模拟器验收通过' --notes-file release-notes.md
           fi
           gh release upload "$RELEASE_TAG" delivery/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file release-notes.md
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --title 'FlClash URLTest Pro 修复版 v2 · 模拟器验收通过' --notes-file release-notes.md
           gh release view "$RELEASE_TAG" --json url,assets,isDraft,isPrerelease
