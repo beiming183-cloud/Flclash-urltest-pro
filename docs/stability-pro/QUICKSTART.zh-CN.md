@@ -2,7 +2,7 @@
 
 ## 安装
 
-在手机点击[修复版 APK 直接下载](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/download/stability-pro-test-20261014-v2/FlClash-URLTest-Pro-arm64-test.apk)。[Release 页面](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/tag/stability-pro-test-20261014-v2)另有 SHA256、签名证书和来源 commit 文件，便于核验。
+在手机点击[修复版 APK 直接下载](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/download/stability-pro-test-20261014-v3/FlClash-URLTest-Pro-arm64-test.apk)。[Release 页面](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases/tag/stability-pro-test-20261014-v3)另有 SHA256、签名证书和来源 commit 文件，便于核验。
 
 这次测试签名与旧包不同：先保留或导出配置，卸载旧 URLTest Pro 测试版，再安装修复版并重新导入原 IP1 文件。官方 FlClash 可以保留。首次启动等待首页出现主用节点后，再打开业务应用；三个候选会继续补齐。
 
@@ -33,6 +33,10 @@
 建议先确认自己的公网出口，再依次测试主中继暂时不可达、所有中继不可达、Wi-Fi / 蜂窝切换、飞行模式、锁屏恢复及配置重载。全部链路失败时应显示无住宅链路，不能改用 DIRECT 或另一个住宅身份。
 
 备用重试发生在返回连接给应用之前。应用已经发出的请求和流式内容不会被自动重放；失败后仍可能需要应用重新连接。
+
+## 新功能入口
+
+原版首页与代理页保留。继续使用原闪电一键测速和节点点选；代理页右上角“更多”增加住宅链路稳定模式及导出诊断两个可选入口。参见 [v3 使用说明](OFFICIAL_UI_V3.zh-CN.md)。
 
 ## 验收范围
 
