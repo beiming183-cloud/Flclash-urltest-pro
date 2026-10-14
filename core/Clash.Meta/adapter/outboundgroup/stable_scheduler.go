@@ -37,6 +37,15 @@ func (s *Stable) pending(id string) bool {
 	return s.scheduled[id] || s.probing[id]
 }
 
+func competitionBudgetAvailable(state stability.Snapshot) bool {
+	remaining := state.BudgetResetIn
+	if remaining <= 0 || remaining > 3600 {
+		remaining = 3600
+	}
+	maintenance := (remaining+5)/6 + 12
+	return state.BudgetUsed < 780 && state.BudgetUsed+maintenance < 840
+}
+
 func competitionCandidate(state stability.Snapshot, now time.Time, pending func(string) bool) string {
 	active := map[string]bool{}
 	worstCost := 0.0
@@ -142,9 +151,9 @@ func (s *Stable) schedule(ctx context.Context) {
 					break
 				}
 				for _, node := range state.Nodes {
-					interval := 20 * time.Second
+					interval := 30 * time.Second
 					if id == state.Primary {
-						interval = 10 * time.Second
+						interval = 15 * time.Second
 					}
 					if state.PowerSave {
 						interval *= 3
@@ -158,14 +167,14 @@ func (s *Stable) schedule(ctx context.Context) {
 					break
 				}
 			}
-			if task == "" && state.BudgetUsed < 780 {
+			if task == "" && competitionBudgetAvailable(state) {
 				task = competitionCandidate(state, now, s.pending)
 			}
-			if task == "" && state.BudgetUsed < 780 && now.Sub(lastExplore) >= time.Minute {
+			if task == "" && competitionBudgetAvailable(state) && now.Sub(lastExplore) >= time.Minute {
 				for n := 0; n < len(state.Nodes); n++ {
 					node := state.Nodes[coldIndex%len(state.Nodes)]
 					coldIndex++
-					if !s.pending(node.ID) && !now.Before(node.CoolingUntil) {
+					if !containsStable(state.Active, node.ID) && !node.Quarantined && !s.pending(node.ID) && !now.Before(node.CoolingUntil) {
 						task = node.ID
 						lastExplore = now
 						break

@@ -13,7 +13,7 @@ import (
 
 func (s *Stable) checkTargetTLS(ctx context.Context) {
 	state := s.engine.Snapshot()
-	if len(state.Active) == 0 || state.BudgetUsed >= 780 {
+	if len(state.Active) == 0 || !competitionBudgetAvailable(state) {
 		return
 	}
 	s.mu.Lock()

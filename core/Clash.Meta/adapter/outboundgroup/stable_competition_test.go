@@ -42,3 +42,49 @@ func TestSlowCandidateCannotConsumeFullPoolCompetitionBudget(t *testing.T) {
 		t.Fatalf("Slow candidate displaced challenger work: %q", got)
 	}
 }
+
+func TestCompetitionPreservesRemainingMaintenanceBudget(t *testing.T) {
+	for _, test := range []struct {
+		used, reset int
+		want        bool
+	}{
+		{0, 3600, true},
+		{200, 3600, true},
+		{240, 3600, false},
+		{345, 3000, false},
+		{500, 1200, true},
+		{780, 600, false},
+	} {
+		state := stability.Snapshot{BudgetUsed: test.used, BudgetResetIn: test.reset}
+		if got := competitionBudgetAvailable(state); got != test.want {
+			t.Fatalf("used=%d reset=%d got=%t want=%t", test.used, test.reset, got, test.want)
+		}
+	}
+}
+
+func TestCompetitionLeavesCapacityForFullHourMaintenance(t *testing.T) {
+	used, checks := 0, 0
+	for second := 0; second < 3600; second++ {
+		if second%15 == 0 {
+			used++
+			checks++
+		}
+		if second%30 == 0 {
+			used += 2
+			checks += 2
+		}
+		if second%540 == 0 {
+			used += 9
+		}
+		if used >= 840 {
+			t.Fatalf("Maintenance exhausted budget at second %d: %d", second, used)
+		}
+		state := stability.Snapshot{BudgetUsed: used, BudgetResetIn: 3600 - second}
+		if competitionBudgetAvailable(state) {
+			used += 2
+		}
+	}
+	if checks != 480 || used > 840 {
+		t.Fatalf("Maintenance incomplete: checks=%d budget=%d", checks, used)
+	}
+}

@@ -76,19 +76,20 @@ type Stats struct {
 }
 
 type Snapshot struct {
-	Epoch       uint64             `json:"networkEpoch"`
-	Generation  uint64             `json:"generation"`
-	Primary     string             `json:"primary"`
-	Active      []string           `json:"active"`
-	Nodes       []Stats            `json:"nodes"`
-	Reason      string             `json:"lastSwitchReason"`
-	BudgetUsed  int                `json:"budgetUsed"`
-	BudgetLimit int                `json:"budgetLimit"`
-	Paused      bool               `json:"paused"`
-	PowerSave   bool               `json:"powerSave"`
-	Running     bool               `json:"running"`
-	NetworkKey  string             `json:"networkKey,omitempty"`
-	Networks    map[string][]Stats `json:"networks,omitempty"`
+	Epoch         uint64             `json:"networkEpoch"`
+	Generation    uint64             `json:"generation"`
+	Primary       string             `json:"primary"`
+	Active        []string           `json:"active"`
+	Nodes         []Stats            `json:"nodes"`
+	Reason        string             `json:"lastSwitchReason"`
+	BudgetUsed    int                `json:"budgetUsed"`
+	BudgetLimit   int                `json:"budgetLimit"`
+	BudgetResetIn int                `json:"budgetResetInSec"`
+	Paused        bool               `json:"paused"`
+	PowerSave     bool               `json:"powerSave"`
+	Running       bool               `json:"running"`
+	NetworkKey    string             `json:"networkKey,omitempty"`
+	Networks      map[string][]Stats `json:"networks,omitempty"`
 }
 
 type Engine struct {
@@ -394,6 +395,7 @@ func (e *Engine) Snapshot() Snapshot {
 	}
 	now := e.now()
 	result := Snapshot{Epoch: e.epoch, Generation: e.generation, Primary: e.primary, Active: append([]string{}, e.active...), Reason: e.reason, BudgetUsed: e.budget, BudgetLimit: 900, Paused: e.paused, PowerSave: e.powerSave, Nodes: []Stats{}, NetworkKey: e.network}
+	result.BudgetResetIn = int(math.Ceil(time.Hour.Seconds() - now.Sub(e.budgetStart).Seconds()))
 	for _, id := range e.order {
 		s := *e.nodes[id]
 		e.decay(&s, now)
