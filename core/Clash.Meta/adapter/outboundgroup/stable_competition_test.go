@@ -20,6 +20,11 @@ func TestFullActivePoolStillValidatesFastChallenger(t *testing.T) {
 	if got := competitionCandidate(state, now, func(string) bool { return true }); got != "" {
 		t.Fatalf("Pending challenger was scheduled twice: %q", got)
 	}
+	state.Nodes[3].LastSuccess = now.Add(-3 * time.Minute)
+	state.Nodes[3].LastCheck = state.Nodes[3].LastSuccess
+	if got := competitionCandidate(state, now, func(string) bool { return false }); got != "challenger" {
+		t.Fatalf("Previously fast idle challenger lost its revalidation opportunity: %q", got)
+	}
 	state.Nodes[3].Quarantined = true
 	if got := competitionCandidate(state, now, func(string) bool { return false }); got != "" {
 		t.Fatalf("Quarantined challenger scheduled: %q", got)

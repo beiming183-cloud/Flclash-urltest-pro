@@ -11,7 +11,8 @@ import (
 
 func TestGreenObservationRequiresVerificationAndThenBootstraps(t *testing.T) {
 	s, _, _, _ := testStable(t)
-	s.engine.Invalidate()
+	s.Stop()
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.ObserveDelay("chain-a", "https://www.gstatic.com/generate_204", 300)
 	state := s.engine.Snapshot()
 	if state.Primary != "" || state.Nodes[0].Count == 0 {

@@ -55,9 +55,9 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 		if active[node.ID] || pending(node.ID) || node.Quarantined || now.Before(node.CoolingUntil) || now.Sub(node.LastCheck) < 5*time.Second {
 			continue
 		}
-		good := node.LastError == "" && !node.LastSuccess.IsZero() && now.Sub(node.LastSuccess) < 90*time.Second
+		good := node.LastError == "" && !node.LastSuccess.IsZero() && now.Sub(node.LastSuccess) < 15*time.Minute
 		needsValidation := node.TLSAt.IsZero() || node.ExitAt.IsZero()
-		if !needsValidation && stability.CompetitionReady(node) {
+		if !needsValidation && stability.CompetitionReady(node) && now.Sub(node.LastSuccess) < 90*time.Second {
 			continue
 		}
 		if len(state.Active) >= 3 && (!good || stability.LatencyCost(node)+15 >= worstCost) {

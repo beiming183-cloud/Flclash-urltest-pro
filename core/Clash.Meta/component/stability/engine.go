@@ -281,6 +281,19 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		return false
 	}
 	e.decay(s, now)
+	freshWindow := 90 * time.Second
+	if e.powerSave {
+		freshWindow = 180 * time.Second
+	}
+	if sample.OK && now.Sub(s.LastSuccess) > freshWindow {
+		s.Streak = 0
+		s.Samples = nil
+		s.Recent = nil
+		s.EWMA = 0
+		s.P95 = 0
+		s.P50 = 0
+		s.Jitter = 0
+	}
 	s.Recent = append(s.Recent, sample.OK)
 	if len(s.Recent) > latencyWindow {
 		s.Recent = s.Recent[len(s.Recent)-latencyWindow:]
