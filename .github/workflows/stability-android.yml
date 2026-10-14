@@ -65,10 +65,12 @@ jobs:
       - name: Flutter validation
         run: |
           flutter pub get
-          flutter analyze --no-fatal-infos
+          flutter analyze --no-fatal-infos > flutter-analysis.log 2>&1 || { sed 's/^/::error::/' flutter-analysis.log; exit 1; }
+          cat flutter-analysis.log
           cp pubspec.yaml /tmp/pro-pubspec.yaml
           sed -i '0,/build_assets: true/s//build_assets: false/' pubspec.yaml
-          flutter test test/widgets/proxies_stability_access_test.dart --reporter expanded
+          flutter test test/widgets/proxies_stability_access_test.dart --reporter expanded > flutter-ui-smoke.log 2>&1 || { tail -100 flutter-ui-smoke.log | sed 's/^/::error::/'; exit 1; }
+          cat flutter-ui-smoke.log
           flutter test test/widgets/ test/views/proxies_list_test.dart test/views/dashboard/ --reporter expanded
           cp /tmp/pro-pubspec.yaml pubspec.yaml
       - name: Build isolated arm64 test APK
