@@ -207,32 +207,32 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 child: Column(
                   children: [
                     LayoutBuilder(
-                  builder: (_, constraints) {
-                    final columns = min(
-                      max(4 * ((constraints.maxWidth / 280).ceil()), 8),
-                      _maxCrossAxisCount,
-                    );
-                    return isEdit
-                        ? BackLayerScope(
-                            onBack: _handleExitEdit,
-                            child: SuperGrid(
-                              key: key,
-                              crossAxisCount: columns,
-                              crossAxisSpacing: spacing,
-                              mainAxisSpacing: spacing,
-                              children: children,
-                              onUpdate: () {
-                                _handleSave();
-                              },
-                            ),
-                          )
-                        : Grid(
-                            crossAxisCount: columns,
-                            crossAxisSpacing: spacing,
-                            mainAxisSpacing: spacing,
-                            children: children,
-                          );
-                  },
+                      builder: (_, constraints) {
+                        final columns = min(
+                          max(4 * ((constraints.maxWidth / 280).ceil()), 8),
+                          _maxCrossAxisCount,
+                        );
+                        return isEdit
+                            ? BackLayerScope(
+                                onBack: _handleExitEdit,
+                                child: SuperGrid(
+                                  key: key,
+                                  crossAxisCount: columns,
+                                  crossAxisSpacing: spacing,
+                                  mainAxisSpacing: spacing,
+                                  children: children,
+                                  onUpdate: () {
+                                    _handleSave();
+                                  },
+                                ),
+                              )
+                            : Grid(
+                                crossAxisCount: columns,
+                                crossAxisSpacing: spacing,
+                                mainAxisSpacing: spacing,
+                                children: children,
+                              );
+                      },
                     ),
                     const SizedBox(height: 14),
                     WebsiteTestPanel(
