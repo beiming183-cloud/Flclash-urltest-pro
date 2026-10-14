@@ -9,6 +9,24 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 )
 
+func TestRequestLatencyDoesNotShortenKnownEstablishmentDeadline(t *testing.T) {
+	s, a, _, _ := testStable(t)
+	s.Stop()
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	a.delay = 1800 * time.Millisecond
+	epoch := s.engine.Snapshot().Epoch
+	s.engine.Record(s.byName["chain-a"], stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond, FirstResponse: 2200 * time.Millisecond}, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	metadata := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
+	_ = metadata.SetRemoteAddress("example.com:443")
+	conn, err := s.DialContext(ctx, metadata)
+	if err != nil {
+		t.Fatalf("A healthy 200ms request route was timed out before its known establishment completed: %v", err)
+	}
+	_ = conn.Close()
+}
+
 func TestGreenObservationRequiresVerificationAndThenBootstraps(t *testing.T) {
 	s, _, _, _ := testStable(t)
 	s.Stop()

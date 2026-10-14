@@ -140,12 +140,17 @@ class _StabilityViewState extends State<StabilityView> {
                 final node = nodes.firstWhere((n) => n['id'] == id);
                 final at = DateTime.tryParse(node['lastSuccess'] as String? ?? '');
                 final age = at == null ? 0 : DateTime.now().difference(at).inSeconds;
-                final delay = (node['ewmaMs'] as num? ?? 0).round();
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(id == primary ? Icons.radio_button_checked : Icons.check_circle_outline, color: context.colorScheme.primary),
                   title: Text('${id == primary ? l10n.stabilityPrimary : l10n.stabilityBackup} · ${names[id] ?? id}'),
-                  subtitle: Text('$delay ms · ${l10n.stabilityAge(age)} · ${l10n.stabilityVerified}'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StabilityNodeMetrics(node: node),
+                      Text('${l10n.stabilityAge(age)} · ${l10n.stabilityVerified}'),
+                    ],
+                  ),
                 );
               }),
             if (active.isEmpty) Text(l10n.stabilityWaiting),
@@ -185,6 +190,28 @@ class _StabilityViewState extends State<StabilityView> {
           for (final group in _groups) _group(group as Map),
         ],
       ),
+    );
+  }
+}
+
+class StabilityNodeMetrics extends StatelessWidget {
+  const StabilityNodeMetrics({super.key, required this.node});
+
+  final Map<dynamic, dynamic> node;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = context.appLocalizations;
+    final delay = (node['ewmaMs'] as num? ?? 0).round();
+    final jitter = (node['jitterMs'] as num? ?? 0).round();
+    final first = (node['firstResponseMs'] as num? ?? 0).round();
+    final p95 = (node['firstResponseP95Ms'] as num? ?? 0).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(labels.stabilityRequestLatency(delay, jitter)),
+        Text(first > 0 ? labels.stabilityFirstResponse(first, p95) : labels.stabilityFirstResponseUnknown),
+      ],
     );
   }
 }

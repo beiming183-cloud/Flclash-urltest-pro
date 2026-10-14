@@ -92,6 +92,38 @@ func TestRecentFailuresStillPenalizeLatencyCost(t *testing.T) {
 	}
 }
 
+func TestRequestLatencyAndFirstResponseRemainSeparate(t *testing.T) {
+	now := time.Unix(1000, 0)
+	e, _ := New([]Candidate{{"a", "r1", "a1"}}, func() time.Time { return now })
+	epoch := e.Snapshot().Epoch
+	for i := 0; i < 3; i++ {
+		e.Record("a", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond, FirstResponse: 3500 * time.Millisecond}, true)
+		now = now.Add(5 * time.Second)
+	}
+	node := e.Snapshot().Nodes[0]
+	if node.EWMA != 200 || node.P95 != 200 || node.FirstResponse != 3500 || node.FirstResponseP95 != 3500 || node.FirstResponseCount != 3 {
+		t.Fatalf("First-response time polluted request statistics: %+v", node)
+	}
+	good := Stats{P50: 300, P95: 300, EWMA: 300, FirstResponseCount: 3, FirstResponseP95: 1000}
+	if LatencyCost(node) <= LatencyCost(good) {
+		t.Fatal("Repeated slow establishment did not penalize the otherwise fast node")
+	}
+	now = now.Add(2 * time.Minute)
+	e.Record("a", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 210 * time.Millisecond, FirstResponse: 900 * time.Millisecond}, true)
+	node = e.Snapshot().Nodes[0]
+	if node.EWMA != 210 || node.FirstResponseP95 != 900 || node.FirstResponseCount != 1 {
+		t.Fatal("Expired establishment statistics contaminated the new competition")
+	}
+}
+
+func TestNormalEstablishmentDoesNotDisplaceFastStableNode(t *testing.T) {
+	fast := Stats{P50: 200, P95: 220, EWMA: 205, FirstResponseCount: 3, FirstResponseP95: 1900}
+	slow := Stats{P50: 450, P95: 500, EWMA: 460, FirstResponseCount: 3, FirstResponseP95: 600}
+	if LatencyCost(fast) >= LatencyCost(slow) {
+		t.Fatal("Normal first-response cost outweighed low, stable request latency")
+	}
+}
+
 func TestIdleChallengerMustRebuildRecentSuccessStreak(t *testing.T) {
 	now := time.Unix(1000, 0)
 	e, _ := New([]Candidate{{"current", "r1", "a1"}, {"idle", "r2", "a2"}}, func() time.Time { return now })

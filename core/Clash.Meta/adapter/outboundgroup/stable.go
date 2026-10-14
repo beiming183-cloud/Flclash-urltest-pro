@@ -245,6 +245,7 @@ func (s *Stable) log(event, reason, id string, ok bool, latency time.Duration, s
 	entry := stability.Event{Event: event, Reason: reason, Group: s.groupID, Node: id, OK: ok, LatencyMs: latency.Milliseconds(), Epoch: state.Epoch, Generation: state.Generation}
 	if len(samples) > 0 {
 		entry.Phase, entry.Service = samples[0].Phase, samples[0].Service
+		entry.FirstResponseMs = samples[0].FirstResponse.Milliseconds()
 	}
 	_ = s.journal.Record(entry)
 }
@@ -425,7 +426,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		timeout := 4 * time.Second
 		for _, node := range state.Nodes {
 			if node.ID == id && node.P95 > 0 {
-				timeout = time.Duration(node.P95*3)*time.Millisecond + 750*time.Millisecond
+				timeout = time.Duration(max(node.P95*3, node.FirstResponseP95*1.5))*time.Millisecond + 750*time.Millisecond
 				timeout = max(1500*time.Millisecond, min(timeout, 4*time.Second))
 			}
 		}

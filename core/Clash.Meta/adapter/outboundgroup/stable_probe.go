@@ -72,7 +72,20 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		if !reserve() {
 			return 0, errors.New("budget_exhausted")
 		}
-		delay, err := proxy.URLTest(ctx, url, status)
+		var delay uint16
+		var err error
+		if timed, ok := proxy.(interface {
+			URLTestWithTiming(context.Context, string, utils.IntRanges[uint16]) (C.URLTestResult, error)
+		}); ok {
+			result, testErr := timed.URLTestWithTiming(ctx, url, status)
+			delay, err = result.Delay, testErr
+			sample.FirstResponse = result.FirstResponse
+			if err == nil && !result.ReusedConnection {
+				err = errors.New("service_failed")
+			}
+		} else {
+			delay, err = proxy.URLTest(ctx, url, status)
+		}
 		if err == nil && !proxy.AliveForTestUrl(url) {
 			return 0, errors.New("service_failed")
 		}

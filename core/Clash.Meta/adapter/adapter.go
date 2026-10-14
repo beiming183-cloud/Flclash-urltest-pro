@@ -164,17 +164,22 @@ func (p *Proxy) MarshalJSON() ([]byte, error) {
 // URLTest get the delay for the specified URL
 // implements C.Proxy
 func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (t uint16, err error) {
+	result, err := p.URLTestWithTiming(ctx, url, expectedStatus)
+	return result.Delay, err
+}
+
+func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (result C.URLTestResult, err error) {
 	var satisfied bool
 
 	defer func() {
 		if UrlTestHook != nil {
-			UrlTestHook(url, p.Name(), t)
+			UrlTestHook(url, p.Name(), result.Delay)
 		}
 
 		alive := err == nil
 		record := C.DelayHistory{Time: time.Now()}
 		if alive {
-			record.Delay = t
+			record.Delay = result.Delay
 		}
 
 		p.alive.Store(alive)
@@ -203,7 +208,8 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 
 	}()
 
-	unifiedDelay := UnifiedDelay.Load() && p.Type() != C.StableFailover && !strings.HasPrefix(p.ProxyInfo().DialerProxy, "RF2-Relay-")
+	residential := p.Type() == C.StableFailover || strings.HasPrefix(p.ProxyInfo().DialerProxy, "RF2-Relay-")
+	unifiedDelay := UnifiedDelay.Load() || residential
 
 	addr, err := urlToMetadata(url)
 	if err != nil {
@@ -253,6 +259,7 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 	defer client.CloseIdleConnections()
 
 	resp, err := client.Do(req)
+	result.FirstResponse = time.Since(start)
 
 	if err != nil {
 		return
@@ -269,7 +276,12 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 			resp = secondResp
 			_ = resp.Body.Close()
 			start = second
+			result.ReusedConnection = true
 		} else {
+			if residential {
+				err = ignoredErr
+				return
+			}
 			if strings.HasPrefix(url, "http://") {
 				log.Errorln("%s failed to get the second response from %s: %v", p.Name(), url, ignoredErr)
 				log.Warnln("It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests.")
@@ -278,7 +290,7 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 	}
 
 	satisfied = resp != nil && (expectedStatus == nil || expectedStatus.Check(uint16(resp.StatusCode)))
-	t = uint16(time.Since(start) / time.Millisecond)
+	result.Delay = uint16(time.Since(start) / time.Millisecond)
 	return
 }
 

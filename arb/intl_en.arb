@@ -567,7 +567,7 @@
   "stabilityBudget": "Waiting for check budget",
   "stabilityValidating": "Verifying chain",
   "stabilityUnavailable": "Unable to read stability status",
-  "stabilityMeasurement": "Complete-chain delay; exit verification shown separately.",
+  "stabilityMeasurement": "Request latency is measured after connection setup; first response and exit checks are shown separately.",
   "stabilityAutomatic": "Automatic failover",
   "stabilityPowerSave": "Less frequent background checks",
   "stabilityPrimary": "Primary",
@@ -606,5 +606,82 @@
   "websiteTestUrl": "HTTPS URL",
   "websiteTestInvalidUrl": "Enter a valid HTTPS URL",
   "websiteTestOffline": "Connect first",
-  "websiteTestFailed": "Failed"
+  "websiteTestFailed": "Failed",
+  "stabilityRequestLatency": "{delay} ms request latency · {jitter} ms variation",
+  "@stabilityRequestLatency": {
+    "placeholders": {
+      "delay": {
+        "type": "int"
+      },
+      "jitter": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityFirstResponse": "First response (incl. setup) {delay} ms · P95 {p95} ms",
+  "@stabilityFirstResponse": {
+    "placeholders": {
+      "delay": {
+        "type": "int"
+      },
+      "p95": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityFirstResponseUnknown": "First response (incl. setup): awaiting measurement",
+  "stabilitySelectionLog": "Candidate selection log",
+  "stabilitySelectionLogDescription": "Recent 128 selections and exclusions · newest first",
+  "stabilitySelectionLogEmpty": "No selections yet. Connect and wait for candidate checks.",
+  "stabilitySelectionUnknownNode": "Unknown node",
+  "stabilitySelectionPrimary": "Primary selected · {node}",
+  "@stabilitySelectionPrimary": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionSwitch": "Primary switched · {previous} → {node}",
+  "@stabilitySelectionSwitch": {
+    "placeholders": {
+      "previous": {
+        "type": "String"
+      },
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionBackup": "Backup added · {node}",
+  "@stabilitySelectionBackup": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionRemoved": "Candidate removed · {node}",
+  "@stabilitySelectionRemoved": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionRejected": "Not selected · {node}",
+  "@stabilitySelectionRejected": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionBetter": "Better low-latency stability score",
+  "stabilitySelectionManual": "Manually selected",
+  "stabilitySelectionFailover": "Previous connection failed; switched to a verified candidate",
+  "stabilitySelectionTimeout": "Connection or verification timed out",
+  "stabilitySelectionReordered": "Candidate pool reordered",
+  "stabilitySelectionVerified": "Chain and exit verification passed",
+  "stabilitySelectionFailed": "Verification failed; candidate excluded"
 }

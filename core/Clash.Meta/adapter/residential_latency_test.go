@@ -34,7 +34,7 @@ func (a delayedLatencyAdapter) DialContext(ctx context.Context, metadata *C.Meta
 	return a.ProxyAdapter.DialContext(ctx, metadata)
 }
 
-func TestResidentialURLTestIncludesEstablishmentWithUnifiedDelay(t *testing.T) {
+func TestResidentialURLTestShowsEstablishedRequestLatency(t *testing.T) {
 	previous := UnifiedDelay.Load()
 	UnifiedDelay.Store(true)
 	t.Cleanup(func() { UnifiedDelay.Store(previous) })
@@ -42,17 +42,17 @@ func TestResidentialURLTestIncludesEstablishmentWithUnifiedDelay(t *testing.T) {
 		name  string
 		kind  C.AdapterType
 		relay string
-		full  bool
 	}{
-		{"ordinary", C.Direct, "", false},
-		{"residential_http", C.Http, "RF2-Relay-one", true},
-		{"residential_socks", C.Socks5, "RF2-Relay-two", true},
-		{"stable_group", C.StableFailover, "", true},
+		{"ordinary", C.Direct, ""},
+		{"residential_http", C.Http, "RF2-Relay-one"},
+		{"residential_socks", C.Socks5, "RF2-Relay-two"},
+		{"stable_group", C.StableFailover, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
+				time.Sleep(10 * time.Millisecond)
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer server.Close()
@@ -64,13 +64,59 @@ func TestResidentialURLTestIncludesEstablishmentWithUnifiedDelay(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.full {
-				if requests.Load() != 1 || delay < 140 {
-					t.Fatalf("Establishment excluded: requests=%d delay=%d", requests.Load(), delay)
-				}
-			} else if requests.Load() != 2 {
-				t.Fatalf("Ordinary unified testing changed: requests=%d", requests.Load())
+			if requests.Load() != 2 || delay < 5 || delay >= 140 {
+				t.Fatalf("First establishment polluted displayed request latency: requests=%d delay=%d", requests.Load(), delay)
 			}
 		})
+	}
+}
+
+func TestResidentialTimingSeparatesBothMeasurements(t *testing.T) {
+	previous := UnifiedDelay.Load()
+	UnifiedDelay.Store(false)
+	t.Cleanup(func() { UnifiedDelay.Store(previous) })
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	proxy := NewProxy(delayedLatencyAdapter{ProxyAdapter: outbound.NewDirect(), kind: C.Socks5, relay: "RF2-Relay-one"})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result, err := proxy.URLTestWithTiming(ctx, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ReusedConnection || result.Delay < 5 || result.Delay >= 140 || result.FirstResponse < 150*time.Millisecond || requests.Load() != 2 {
+		t.Fatalf("Measurements mixed or missing: %+v requests=%d", result, requests.Load())
+	}
+	ordinary := NewProxy(delayedLatencyAdapter{ProxyAdapter: outbound.NewDirect(), kind: C.Direct})
+	result, err = ordinary.URLTestWithTiming(ctx, server.URL, nil)
+	if err != nil || result.ReusedConnection || result.Delay < 150 || requests.Load() != 3 {
+		t.Fatalf("Ordinary unified-delay setting was overridden: %+v err=%v", result, err)
+	}
+}
+
+func TestResidentialWarmRequestFailureDoesNotShowColdSuccess(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	defer server.Close()
+	proxy := NewProxy(delayedLatencyAdapter{ProxyAdapter: outbound.NewDirect(), kind: C.Http, relay: "RF2-Relay-one"})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result, err := proxy.URLTestWithTiming(ctx, server.URL, nil)
+	if err == nil || result.Delay != 0 || proxy.AliveForTestUrl(server.URL) || result.FirstResponse < 140*time.Millisecond {
+		t.Fatalf("Failed warm measurement was reported as success: %+v err=%v alive=%v", result, err, proxy.AliveForTestUrl(server.URL))
 	}
 }

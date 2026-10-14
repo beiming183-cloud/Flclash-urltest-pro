@@ -14,6 +14,12 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 )
 
+type URLTestResult struct {
+	Delay            uint16
+	FirstResponse    time.Duration
+	ReusedConnection bool
+}
+
 // Adapter Type
 const (
 	Direct AdapterType = iota

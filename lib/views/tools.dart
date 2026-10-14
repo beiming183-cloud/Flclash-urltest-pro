@@ -11,6 +11,7 @@ import 'package:fl_clash/views/application_setting.dart';
 import 'package:fl_clash/views/backup_and_restore.dart';
 import 'package:fl_clash/views/config/config.dart';
 import 'package:fl_clash/views/hotkey.dart';
+import 'package:fl_clash/views/selection_log.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,6 +80,12 @@ class _ToolViewState extends ConsumerState<ToolsView> {
         const _ConfigItem(),
         const _AdvancedConfigItem(),
         const _SettingItem(),
+        ListItem.open(
+          leading: const Icon(Icons.fact_check_outlined),
+          title: Text(context.appLocalizations.stabilitySelectionLog),
+          subtitle: Text(context.appLocalizations.stabilitySelectionLogDescription),
+          widget: const SelectionLogView(),
+        ),
       ],
     );
   }

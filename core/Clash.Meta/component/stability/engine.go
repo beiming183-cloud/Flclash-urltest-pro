@@ -21,16 +21,17 @@ type Candidate struct {
 }
 
 type Sample struct {
-	Epoch   uint64
-	OK      bool
-	TLS     bool
-	Exit    bool
-	Hard    bool
-	Latency time.Duration
-	Error   string
-	Phase   string
-	Service string
-	TLSInfo []TLSInfo
+	Epoch         uint64
+	OK            bool
+	TLS           bool
+	Exit          bool
+	Hard          bool
+	Latency       time.Duration
+	FirstResponse time.Duration
+	Error         string
+	Phase         string
+	Service       string
+	TLSInfo       []TLSInfo
 }
 
 type TLSInfo struct {
@@ -48,31 +49,35 @@ type TLSInfo struct {
 
 type Stats struct {
 	Candidate
-	Success      float64   `json:"success"`
-	Failure      float64   `json:"failure"`
-	Samples      []float64 `json:"-"`
-	EWMA         float64   `json:"ewmaMs"`
-	P95          float64   `json:"p95Ms"`
-	P50          float64   `json:"p50Ms"`
-	Jitter       float64   `json:"jitterMs"`
-	Recent       []bool    `json:"recentResults,omitempty"`
-	Lower        float64   `json:"reliabilityLower"`
-	Count        int       `json:"sampleCount"`
-	LastSuccess  time.Time `json:"lastSuccess"`
-	LastCheck    time.Time `json:"lastCheck"`
-	FirstSuccess time.Time `json:"-"`
-	TLSAt        time.Time `json:"tlsAt"`
-	ExitAt       time.Time `json:"exitAt"`
-	CoolingUntil time.Time `json:"coolingUntil"`
-	Streak       int       `json:"successStreak"`
-	LastPhase    string    `json:"phase,omitempty"`
-	LastService  string    `json:"serviceTag,omitempty"`
-	Failures     int       `json:"-"`
-	Cooldowns    int       `json:"-"`
-	LastError    string    `json:"error"`
-	Quarantined  bool      `json:"quarantined"`
-	decayedAt    time.Time
-	lastFailure  time.Time
+	Success              float64   `json:"success"`
+	Failure              float64   `json:"failure"`
+	Samples              []float64 `json:"-"`
+	EWMA                 float64   `json:"ewmaMs"`
+	P95                  float64   `json:"p95Ms"`
+	P50                  float64   `json:"p50Ms"`
+	Jitter               float64   `json:"jitterMs"`
+	Recent               []bool    `json:"recentResults,omitempty"`
+	FirstResponse        float64   `json:"firstResponseMs"`
+	FirstResponseP95     float64   `json:"firstResponseP95Ms"`
+	FirstResponseCount   int       `json:"firstResponseSampleCount"`
+	FirstResponseSamples []float64 `json:"-"`
+	Lower                float64   `json:"reliabilityLower"`
+	Count                int       `json:"sampleCount"`
+	LastSuccess          time.Time `json:"lastSuccess"`
+	LastCheck            time.Time `json:"lastCheck"`
+	FirstSuccess         time.Time `json:"-"`
+	TLSAt                time.Time `json:"tlsAt"`
+	ExitAt               time.Time `json:"exitAt"`
+	CoolingUntil         time.Time `json:"coolingUntil"`
+	Streak               int       `json:"successStreak"`
+	LastPhase            string    `json:"phase,omitempty"`
+	LastService          string    `json:"serviceTag,omitempty"`
+	Failures             int       `json:"-"`
+	Cooldowns            int       `json:"-"`
+	LastError            string    `json:"error"`
+	Quarantined          bool      `json:"quarantined"`
+	decayedAt            time.Time
+	lastFailure          time.Time
 }
 
 type Snapshot struct {
@@ -90,6 +95,19 @@ type Snapshot struct {
 	Running       bool               `json:"running"`
 	NetworkKey    string             `json:"networkKey,omitempty"`
 	Networks      map[string][]Stats `json:"networks,omitempty"`
+	Selections    []SelectionEvent   `json:"selections,omitempty"`
+}
+
+type SelectionEvent struct {
+	Time            time.Time `json:"time"`
+	Kind            string    `json:"kind"`
+	Node            string    `json:"node"`
+	Previous        string    `json:"previous,omitempty"`
+	Reason          string    `json:"reason"`
+	Latency         float64   `json:"requestLatencyMs"`
+	Jitter          float64   `json:"jitterMs"`
+	FirstResponse   float64   `json:"firstResponseMs,omitempty"`
+	PreviousLatency float64   `json:"previousLatencyMs,omitempty"`
 }
 
 type Engine struct {
@@ -111,6 +129,7 @@ type Engine struct {
 	networkLRU  []string
 	lastSwitch  time.Time
 	manual      string
+	selections  []SelectionEvent
 }
 
 func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
@@ -176,6 +195,9 @@ func LatencyCost(s Stats) float64 {
 	}
 	jitter := math.Max(s.P95-p50, 0)
 	cost := .5*p50 + .3*s.P95 + .2*s.EWMA + .5*jitter
+	if s.FirstResponseCount >= 3 {
+		cost += .15 * math.Max(s.FirstResponseP95-2000, 0)
+	}
 	if len(s.Recent) > 0 {
 		failures := 0
 		for _, ok := range s.Recent {
@@ -189,6 +211,7 @@ func LatencyCost(s Stats) float64 {
 }
 
 func (e *Engine) choose(now time.Time) {
+	previousActive := append([]string(nil), e.active...)
 	pool := []*Stats{}
 	for _, id := range e.order {
 		s := e.nodes[id]
@@ -258,6 +281,38 @@ func (e *Engine) choose(now time.Time) {
 		if e.reason == "" {
 			e.reason = "promote"
 		}
+		if e.primary != "" {
+			e.recordSelection("primary", e.primary, old, e.reason)
+		}
+	}
+	for _, id := range e.active {
+		if id != e.primary && !contains(previousActive, id) {
+			e.recordSelection("backup", id, "", "pool_selected")
+		}
+	}
+	for _, id := range previousActive {
+		if !contains(e.active, id) && (id != old || e.primary == "") {
+			reason := "pool_replaced"
+			if e.nodes[id].LastError != "" {
+				reason = e.nodes[id].LastError
+			}
+			e.recordSelection("removed", id, "", reason)
+		}
+	}
+}
+
+func (e *Engine) recordSelection(kind, id, previous, reason string) {
+	node := e.nodes[id]
+	if node == nil {
+		return
+	}
+	event := SelectionEvent{Time: e.now(), Kind: kind, Node: id, Previous: previous, Reason: reason, Latency: node.EWMA, Jitter: node.Jitter, FirstResponse: node.FirstResponse}
+	if previousNode := e.nodes[previous]; previousNode != nil {
+		event.PreviousLatency = previousNode.EWMA
+	}
+	e.selections = append(e.selections, event)
+	if len(e.selections) > 128 {
+		e.selections = e.selections[len(e.selections)-128:]
 	}
 }
 
@@ -294,6 +349,10 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		s.P95 = 0
 		s.P50 = 0
 		s.Jitter = 0
+		s.FirstResponse = 0
+		s.FirstResponseP95 = 0
+		s.FirstResponseCount = 0
+		s.FirstResponseSamples = nil
 	}
 	s.Recent = append(s.Recent, sample.OK)
 	if len(s.Recent) > latencyWindow {
@@ -323,6 +382,17 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 			s.ExitAt = now
 		}
 		ms := float64(sample.Latency) / float64(time.Millisecond)
+		if sample.FirstResponse > 0 {
+			s.FirstResponse = float64(sample.FirstResponse) / float64(time.Millisecond)
+			s.FirstResponseSamples = append(s.FirstResponseSamples, s.FirstResponse)
+			if len(s.FirstResponseSamples) > latencyWindow {
+				s.FirstResponseSamples = s.FirstResponseSamples[1:]
+			}
+			s.FirstResponseCount = len(s.FirstResponseSamples)
+			firstResponses := append([]float64(nil), s.FirstResponseSamples...)
+			sort.Float64s(firstResponses)
+			s.FirstResponseP95 = firstResponses[int(math.Ceil(.95*float64(len(firstResponses))))-1]
+		}
 		if ms > 0 {
 			if s.EWMA == 0 {
 				s.EWMA = ms
@@ -356,6 +426,9 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 				cooldown = 30 * time.Minute
 			}
 			s.CoolingUntil = now.Add(cooldown)
+			if sample.Hard || s.Failures == 2 {
+				e.recordSelection("rejected", id, "", sample.Error)
+			}
 		}
 		if e.primary == id {
 			e.reason = sample.Error
@@ -395,11 +468,13 @@ func (e *Engine) Snapshot() Snapshot {
 	}
 	now := e.now()
 	result := Snapshot{Epoch: e.epoch, Generation: e.generation, Primary: e.primary, Active: append([]string{}, e.active...), Reason: e.reason, BudgetUsed: e.budget, BudgetLimit: 900, Paused: e.paused, PowerSave: e.powerSave, Nodes: []Stats{}, NetworkKey: e.network}
+	result.Selections = append([]SelectionEvent(nil), e.selections...)
 	result.BudgetResetIn = int(math.Ceil(time.Hour.Seconds() - now.Sub(e.budgetStart).Seconds()))
 	for _, id := range e.order {
 		s := *e.nodes[id]
 		e.decay(&s, now)
 		s.Samples = nil
+		s.FirstResponseSamples = nil
 		result.Nodes = append(result.Nodes, s)
 	}
 	return result
@@ -427,6 +502,7 @@ func (e *Engine) SetPrimary(id string) bool {
 	}
 	e.manual = id
 	if e.primary != id {
+		e.recordSelection("primary", id, e.primary, "manual")
 		e.primary = id
 		e.generation++
 		e.reason = "manual"
@@ -449,6 +525,7 @@ func (e *Engine) PromoteDial(id string, epoch uint64) bool {
 		return false
 	}
 	if !e.paused && e.primary != id {
+		e.recordSelection("primary", id, e.primary, "dial_failover")
 		e.primary = id
 		e.generation++
 		e.reason = "dial_failover"
@@ -485,6 +562,12 @@ func (e *Engine) Invalidate() {
 		s.Samples = nil
 		s.P50 = 0
 		s.Jitter = 0
+		s.EWMA = 0
+		s.P95 = 0
+		s.FirstResponse = 0
+		s.FirstResponseP95 = 0
+		s.FirstResponseCount = 0
+		s.FirstResponseSamples = nil
 		s.Quarantined = false
 		s.CoolingUntil = time.Time{}
 		s.Failures = 0
@@ -494,6 +577,14 @@ func (e *Engine) Invalidate() {
 func (e *Engine) Restore(snapshot Snapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	for _, event := range snapshot.Selections {
+		if validSelection(event) && e.nodes[event.Node] != nil && (event.Previous == "" || e.nodes[event.Previous] != nil) {
+			e.selections = append(e.selections, event)
+		}
+	}
+	if len(e.selections) > 128 {
+		e.selections = e.selections[len(e.selections)-128:]
+	}
 	for key, nodes := range snapshot.Networks {
 		if len(e.networks) >= 8 || !validID(key) {
 			continue
@@ -527,6 +618,7 @@ func (e *Engine) SwitchNetwork(key string) {
 		for _, id := range e.order {
 			s := *e.nodes[id]
 			s.Samples = nil
+			s.FirstResponseSamples = nil
 			if s.LastCheck.IsZero() {
 				s.LastCheck = s.decayedAt
 			}

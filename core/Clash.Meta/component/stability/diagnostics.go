@@ -25,20 +25,21 @@ const LogLimit = 1 << 20
 const ExportLimit = 2 << 20
 
 type Event struct {
-	Schema      int       `json:"schemaVersion"`
-	Time        time.Time `json:"wallClock"`
-	MonotonicMs int64     `json:"monotonicMs"`
-	Event       string    `json:"event"`
-	Reason      string    `json:"reason,omitempty"`
-	Group       string    `json:"groupId"`
-	Node        string    `json:"nodeId,omitempty"`
-	Epoch       uint64    `json:"networkEpoch"`
-	Generation  uint64    `json:"routeGeneration"`
-	LatencyMs   int64     `json:"latencyMs,omitempty"`
-	OK          bool      `json:"ok"`
-	Repeated    int       `json:"repeated,omitempty"`
-	Phase       string    `json:"phase,omitempty"`
-	Service     string    `json:"serviceTag,omitempty"`
+	Schema          int       `json:"schemaVersion"`
+	Time            time.Time `json:"wallClock"`
+	MonotonicMs     int64     `json:"monotonicMs"`
+	Event           string    `json:"event"`
+	Reason          string    `json:"reason,omitempty"`
+	Group           string    `json:"groupId"`
+	Node            string    `json:"nodeId,omitempty"`
+	Epoch           uint64    `json:"networkEpoch"`
+	Generation      uint64    `json:"routeGeneration"`
+	LatencyMs       int64     `json:"latencyMs,omitempty"`
+	FirstResponseMs int64     `json:"firstResponseMs,omitempty"`
+	OK              bool      `json:"ok"`
+	Repeated        int       `json:"repeated,omitempty"`
+	Phase           string    `json:"phase,omitempty"`
+	Service         string    `json:"serviceTag,omitempty"`
 }
 
 type Journal struct {
@@ -138,6 +139,14 @@ func (j *Journal) Store(group string, state Snapshot) error {
 	if !validID(group) {
 		return errors.New("invalid statistics identity")
 	}
+	if len(state.Selections) > 128 {
+		return errors.New("selection history budget exceeded")
+	}
+	for _, event := range state.Selections {
+		if !validSelection(event) {
+			return errors.New("invalid selection history fields")
+		}
+	}
 	checkNodes := func(nodes []Stats) bool {
 		if len(nodes) > MaxCandidates {
 			return false
@@ -178,6 +187,12 @@ func (j *Journal) Store(group string, state Snapshot) error {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(j.dir, "statistics.json"))
+}
+
+func validSelection(event SelectionEvent) bool {
+	kind := event.Kind == "primary" || event.Kind == "backup" || event.Kind == "removed" || event.Kind == "rejected"
+	reason := reasons[event.Reason] || event.Reason == "pool_selected" || event.Reason == "pool_replaced"
+	return kind && reason && validID(event.Node) && (event.Previous == "" || validID(event.Previous))
 }
 
 func (j *Journal) ID(value string) string {

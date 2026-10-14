@@ -562,5 +562,83 @@
   "websiteTestUrl": "HTTPS URL",
   "websiteTestInvalidUrl": "Введите корректный HTTPS URL",
   "websiteTestOffline": "Сначала подключитесь",
-  "websiteTestFailed": "Ошибка"
+  "websiteTestFailed": "Ошибка",
+  "stabilityMeasurement": "Задержка запроса измеряется после подключения; первый ответ и проверка выхода показаны отдельно.",
+  "stabilityRequestLatency": "Задержка запроса {delay} мс · Разброс {jitter} мс",
+  "@stabilityRequestLatency": {
+    "placeholders": {
+      "delay": {
+        "type": "int"
+      },
+      "jitter": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityFirstResponse": "Первый ответ (с подключением) {delay} мс · P95 {p95} мс",
+  "@stabilityFirstResponse": {
+    "placeholders": {
+      "delay": {
+        "type": "int"
+      },
+      "p95": {
+        "type": "int"
+      }
+    }
+  },
+  "stabilityFirstResponseUnknown": "Первый ответ (с подключением): ожидание измерения",
+  "stabilitySelectionLog": "Журнал выбора кандидатов",
+  "stabilitySelectionLogDescription": "Последние 128 выборов и исключений · новые сверху",
+  "stabilitySelectionLogEmpty": "Записей пока нет. Подключитесь и дождитесь проверки кандидатов.",
+  "stabilitySelectionUnknownNode": "Неизвестный узел",
+  "stabilitySelectionPrimary": "Выбран основной · {node}",
+  "@stabilitySelectionPrimary": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionSwitch": "Основной изменён · {previous} → {node}",
+  "@stabilitySelectionSwitch": {
+    "placeholders": {
+      "previous": {
+        "type": "String"
+      },
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionBackup": "Добавлен резервный · {node}",
+  "@stabilitySelectionBackup": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionRemoved": "Кандидат удалён · {node}",
+  "@stabilitySelectionRemoved": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionRejected": "Не выбран · {node}",
+  "@stabilitySelectionRejected": {
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "stabilitySelectionBetter": "Лучше оценка низкой задержки и стабильности",
+  "stabilitySelectionManual": "Выбран вручную",
+  "stabilitySelectionFailover": "Предыдущее подключение не удалось; выбран проверенный кандидат",
+  "stabilitySelectionTimeout": "Тайм-аут подключения или проверки",
+  "stabilitySelectionReordered": "Кандидаты пересортированы",
+  "stabilitySelectionVerified": "Проверка цепочки и выхода пройдена",
+  "stabilitySelectionFailed": "Проверка не пройдена; временно исключён"
 }
