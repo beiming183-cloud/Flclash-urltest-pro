@@ -122,3 +122,22 @@ func TestStartupStillRequiresFreshTLSAndExpectedExit(t *testing.T) {
 		t.Fatal("startup accepted a node without an exit check")
 	}
 }
+
+func TestStartupSchedulerBeginsWithoutWaitingForFirstTimer(t *testing.T) {
+	s, _, _, _ := testStable(t)
+	s.Stop()
+	s.probe = func(_ context.Context, _ C.Proxy, _ string, verify bool, epoch uint64, _ func() bool) stability.Sample {
+		if !verify {
+			t.Error("startup did not request fresh exit validation")
+		}
+		return stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Millisecond}
+	}
+	s.Start()
+	deadline := time.Now().Add(400 * time.Millisecond)
+	for s.Now() == "" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if s.Now() == "" {
+		t.Fatal("startup waited for the one-second maintenance timer")
+	}
+}

@@ -144,7 +144,8 @@ func testStableProtocol(t *testing.T, protocol string) (*Stable, *connectDialer,
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Start()
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.engine.Invalidate()
 	t.Cleanup(s.Stop)
 	qualify := func() {
 		epoch := s.engine.Snapshot().Epoch
