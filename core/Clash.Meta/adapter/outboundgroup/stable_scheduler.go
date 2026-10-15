@@ -92,7 +92,7 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 	return candidates[0].ID
 }
 
-func (s *Stable) launchProbe(ctx context.Context, id string, verify bool) bool {
+func (s *Stable) launchProbe(ctx context.Context, id string, verify bool, fault ...bool) bool {
 	s.mu.Lock()
 	if s.cancel == nil || s.scheduled[id] || s.probing[id] || len(s.scheduled) >= 2 {
 		s.mu.Unlock()
@@ -116,7 +116,8 @@ func (s *Stable) launchProbe(ctx context.Context, id string, verify bool) bool {
 		if len(s.engine.Snapshot().Active) == 0 {
 			s.log("startup_probe", "startup_revalidation", id, false, 0)
 		}
-		_, _ = s.Probe(ctx, id, verify, true)
+		emergency := len(fault) > 0 && fault[0]
+		_, _ = s.probeCandidate(ctx, id, verify, true, emergency)
 	}()
 	return true
 }

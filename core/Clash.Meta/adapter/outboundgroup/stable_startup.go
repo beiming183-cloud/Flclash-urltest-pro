@@ -5,13 +5,30 @@ import (
 	"time"
 )
 
-func (s *Stable) startupProbes(ctx context.Context) {
+func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 	state := s.engine.Snapshot()
-	if len(state.Active) > 0 {
+	limit := 840
+	if len(fault) > 0 && fault[0] {
+		limit = 900
+	}
+	if len(state.Active) > 0 || state.BudgetUsed >= limit {
 		return
 	}
 	now := time.Now()
-	for _, id := range s.engine.StartupCandidates() {
+	ids := s.engine.StartupCandidates()
+	s.mu.Lock()
+	requested := s.requested
+	s.mu.Unlock()
+	if requested != "" && containsStable(ids, requested) {
+		next := []string{requested}
+		for _, id := range ids {
+			if id != requested {
+				next = append(next, id)
+			}
+		}
+		ids = next
+	}
+	for _, id := range ids {
 		if s.pending(id) {
 			continue
 		}
@@ -25,7 +42,7 @@ func (s *Stable) startupProbes(ctx context.Context) {
 		if recent {
 			continue
 		}
-		if !s.launchProbe(ctx, id, true) {
+		if !s.launchProbe(ctx, id, true, fault...) {
 			return
 		}
 	}
@@ -59,7 +76,7 @@ func (s *Stable) awaitStartup(ctx, owner context.Context) error {
 		if owner.Err() != nil {
 			return owner.Err()
 		}
-		s.startupProbes(owner)
+		s.startupProbes(owner, true)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
