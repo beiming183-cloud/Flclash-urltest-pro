@@ -47,7 +47,8 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            networkInfos[network] = NetworkInfo()
+            val info = networkInfos.computeIfAbsent(network) { NetworkInfo() }
+            connectivity?.getLinkProperties(network)?.let { info.dnsList = it.dnsServers }
             updateDns()
         }
 
@@ -72,6 +73,19 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
 
     override fun start() {
+        connectivity?.allNetworks?.forEach { network ->
+            val capabilities = connectivity?.getNetworkCapabilities(network)
+            if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED) &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_FOREGROUND))
+            ) {
+                networkInfos[network] = NetworkInfo(
+                    dnsList = connectivity?.getLinkProperties(network)?.dnsServers.orEmpty(),
+                )
+            }
+        }
         updateDns()
         connectivity?.registerNetworkCallback(request, callback)
     }
@@ -102,6 +116,15 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
         val capabilities = network?.let { connectivity?.getNetworkCapabilities(it) }
         val online = network != null && capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val key = network?.networkHandle ?: stabilityNetwork
+        val dnsList = selected?.value
+            ?.dnsList
+            .orEmpty()
+            .map { address -> address.asSocketAddressText(DNS_PORT) }
+            .distinct()
+        if (dnsList != currentDnsList) {
+            currentDnsList = dnsList
+            Core.updateDNS(dnsList.joinToString(","))
+        }
         if (key != null && (network == null || capabilities != null) && (key != stabilityNetwork || online != stabilityOnline)) {
             stabilityNetwork = key
             stabilityOnline = online
@@ -110,16 +133,6 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
             val call = JSONObject().put("method", "stabilityNetworkChanged").put("arguments", arguments)
             Core.invokeMethod(call.toString()) {}
         }
-        val dnsList = selected?.value
-            ?.dnsList
-            .orEmpty()
-            .map { address -> address.asSocketAddressText(DNS_PORT) }
-            .distinct()
-        if (dnsList == currentDnsList) {
-            return
-        }
-        currentDnsList = dnsList
-        Core.updateDNS(dnsList.joinToString(","))
     }
 
     override fun stop() {

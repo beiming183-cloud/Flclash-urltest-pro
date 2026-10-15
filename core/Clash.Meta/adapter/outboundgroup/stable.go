@@ -63,6 +63,7 @@ type Stable struct {
 	probing     map[string]bool
 	scheduled   map[string]bool
 	wake        chan struct{}
+	ready       chan struct{}
 	networkKey  string
 	online      bool
 	preferred   []string
@@ -276,6 +277,10 @@ func (s *Stable) Start() {
 	}
 	s.wg.Add(1)
 	go func() { defer s.wg.Done(); s.schedule(ctx) }()
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Stable) Stop() {
@@ -335,7 +340,7 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	s.probing[id] = true
 	s.wg.Add(1)
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); delete(s.probing, id); s.mu.Unlock(); s.wg.Done() }()
+	defer func() { s.mu.Lock(); delete(s.probing, id); s.notifyReadyLocked(); s.mu.Unlock(); s.wg.Done() }()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(owner, cancel)
@@ -355,6 +360,9 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	}
 	if verify {
 		timeout = 18 * time.Second
+		if len(state.Active) == 0 {
+			timeout = 6 * time.Second
+		}
 	}
 	ctx, cancelProbe := context.WithTimeout(ctx, timeout)
 	defer cancelProbe()
@@ -402,16 +410,8 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 	state := s.engine.Snapshot()
 	attempts := s.engine.Attempts()
 	if len(attempts) == 0 {
-		checked := 0
-		for _, node := range state.Nodes {
-			if node.Quarantined || time.Now().Before(node.CoolingUntil) {
-				continue
-			}
-			_, _ = s.probeCandidate(ctx, node.ID, true, true, true)
-			checked++
-			if len(s.engine.Attempts()) > 0 || checked >= 3 {
-				break
-			}
+		if err := s.awaitStartup(ctx, owner); err != nil {
+			return nil, err
 		}
 		attempts = s.engine.Attempts()
 		if len(attempts) == 0 {

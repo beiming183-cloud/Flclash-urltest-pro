@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -63,6 +64,8 @@ var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_f
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
+	events["startup_probe"] = true
+	reasons["startup_revalidation"] = true
 	for _, reason := range []string{"https_timeout", "tls_handshake_timeout", "exit_query_timeout", "latency_improved", "latency_quality_improved"} {
 		reasons[reason] = true
 	}
@@ -145,6 +148,14 @@ func (j *Journal) Store(group string, state Snapshot) error {
 	}
 	if len(state.Selections) > 128 {
 		return errors.New("selection history budget exceeded")
+	}
+	if len(state.StartupHints) > MaxCandidates {
+		return errors.New("startup hint budget exceeded")
+	}
+	for _, hint := range state.StartupHints {
+		if !validID(hint.Node) || hint.Score <= 0 || math.IsInf(hint.Score, 0) || math.IsNaN(hint.Score) || !reasons[hint.Error] {
+			return errors.New("invalid startup hint")
+		}
 	}
 	for _, event := range state.Selections {
 		if !validSelection(event) {
@@ -374,7 +385,7 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101407", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101501", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err

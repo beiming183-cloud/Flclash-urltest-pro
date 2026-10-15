@@ -105,6 +105,7 @@ func (s *Stable) launchProbe(ctx context.Context, id string, verify bool) bool {
 		defer func() {
 			s.mu.Lock()
 			delete(s.scheduled, id)
+			s.notifyReadyLocked()
 			s.mu.Unlock()
 			s.wg.Done()
 			select {
@@ -112,6 +113,9 @@ func (s *Stable) launchProbe(ctx context.Context, id string, verify bool) bool {
 			default:
 			}
 		}()
+		if len(s.engine.Snapshot().Active) == 0 {
+			s.log("startup_probe", "startup_revalidation", id, false, 0)
+		}
 		_, _ = s.Probe(ctx, id, verify, true)
 	}()
 	return true
@@ -128,6 +132,11 @@ func (s *Stable) schedule(ctx context.Context) {
 			return
 		case <-ticker.C:
 		case <-s.wake:
+		}
+		if len(s.engine.Snapshot().Active) == 0 {
+			s.startupProbes(ctx)
+			s.journal.BusinessTick(s.groupID, s.engine.Snapshot())
+			continue
 		}
 		for slot := 0; slot < 2; slot++ {
 			now := time.Now()

@@ -82,6 +82,7 @@ type Stats struct {
 }
 
 type Snapshot struct {
+	StartupHints  []StartupHint      `json:"startupHints,omitempty"`
 	Epoch         uint64             `json:"networkEpoch"`
 	Generation    uint64             `json:"generation"`
 	Primary       string             `json:"primary"`
@@ -112,6 +113,7 @@ type SelectionEvent struct {
 }
 
 type Engine struct {
+	startup     map[string]StartupHint
 	mu          sync.Mutex
 	now         func() time.Time
 	nodes       map[string]*Stats
@@ -140,7 +142,7 @@ func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
 	if now == nil {
 		now = time.Now
 	}
-	e := &Engine{now: now, nodes: make(map[string]*Stats), epoch: 1, generation: 1, budgetStart: now(), network: "startup", networks: map[string][]Stats{}}
+	e := &Engine{now: now, nodes: make(map[string]*Stats), startup: map[string]StartupHint{}, epoch: 1, generation: 1, budgetStart: now(), network: "startup", networks: map[string][]Stats{}}
 	for _, c := range candidates {
 		if c.ID == "" || c.Relay == "" || e.nodes[c.ID] != nil {
 			return nil, errors.New("invalid candidate identity")
@@ -435,6 +437,7 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 			e.reason = sample.Error
 		}
 	}
+	e.rememberStartup(s)
 	if elect {
 		e.choose(now)
 	}
@@ -473,6 +476,9 @@ func (e *Engine) Snapshot() Snapshot {
 	result.BudgetResetIn = int(math.Ceil(time.Hour.Seconds() - now.Sub(e.budgetStart).Seconds()))
 	for _, id := range e.order {
 		s := *e.nodes[id]
+		if hint, ok := e.startup[id]; ok {
+			result.StartupHints = append(result.StartupHints, hint)
+		}
 		e.decay(&s, now)
 		s.Samples = nil
 		s.FirstResponseSamples = nil
@@ -552,6 +558,7 @@ func (e *Engine) Invalidate() {
 	e.active = nil
 	e.reason = "network_changed"
 	for _, s := range e.nodes {
+		e.rememberStartup(s)
 		s.Streak = 0
 		s.FirstSuccess = time.Time{}
 		s.TLSAt = time.Time{}
@@ -578,6 +585,11 @@ func (e *Engine) Invalidate() {
 func (e *Engine) Restore(snapshot Snapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	for _, hint := range snapshot.StartupHints {
+		if e.nodes[hint.Node] != nil && hint.Score > 0 && !math.IsInf(hint.Score, 0) && !math.IsNaN(hint.Score) && reasons[hint.Error] {
+			e.startup[hint.Node] = hint
+		}
+	}
 	for _, event := range snapshot.Selections {
 		if validSelection(event) && e.nodes[event.Node] != nil && (event.Previous == "" || e.nodes[event.Previous] != nil) {
 			e.selections = append(e.selections, event)
@@ -594,6 +606,9 @@ func (e *Engine) Restore(snapshot Snapshot) {
 		e.networkLRU = append(e.networkLRU, key)
 	}
 	for _, saved := range snapshot.Nodes {
+		if e.nodes[saved.ID] != nil {
+			e.rememberStartup(&saved)
+		}
 		if s := e.nodes[saved.ID]; s != nil {
 			s.Success = saved.Success
 			s.Failure = saved.Failure
@@ -631,9 +646,13 @@ func (e *Engine) SwitchNetwork(key string) {
 	}
 	for _, id := range e.order {
 		candidate := e.nodes[id].Candidate
+		e.rememberStartup(e.nodes[id])
 		e.nodes[id] = &Stats{Candidate: candidate, decayedAt: e.now()}
 	}
 	for _, saved := range e.networks[key] {
+		if e.nodes[saved.ID] != nil {
+			e.rememberStartup(&saved)
+		}
 		if s := e.nodes[saved.ID]; s != nil {
 			s.Success = saved.Success
 			s.Failure = saved.Failure
