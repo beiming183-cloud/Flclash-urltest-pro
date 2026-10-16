@@ -36,3 +36,22 @@ func TestBootstrapConnectsBeforeMeasurementThenUpgradesToStableFastNode(t *testi
 		}
 	}
 }
+
+func TestBootstrapDiagnosticsRetainAvailabilityAndExitVerification(t *testing.T) {
+	j, err := OpenJournal(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, node := j.ID("group"), j.ID("node")
+	for _, event := range []Event{
+		{Event: "startup_probe", Reason: "startup_availability", Group: group, Node: node},
+		{Event: "probe", Group: group, Node: node, Phase: "exit", Service: "bootstrap", OK: true},
+	} {
+		if err := j.Record(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if j.dropped != 0 || j.last == nil || j.last.Service != "bootstrap" {
+		t.Fatal("availability diagnostics were silently dropped")
+	}
+}

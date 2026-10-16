@@ -66,6 +66,7 @@ var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "p
 func init() {
 	events["startup_probe"] = true
 	reasons["startup_revalidation"] = true
+	reasons["startup_availability"] = true
 	for _, reason := range []string{"https_timeout", "tls_handshake_timeout", "exit_query_timeout", "latency_improved", "latency_quality_improved"} {
 		reasons[reason] = true
 	}
@@ -278,7 +279,7 @@ func (j *Journal) Record(event Event) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	validPhase := event.Phase == "" || event.Phase == "delay" || event.Phase == "residential" || event.Phase == "tls" || event.Phase == "exit"
-	validService := event.Service == "" || event.Service == "control" || event.Service == "control_backup" || event.Service == "chatgpt" || event.Service == "android" || event.Service == "exit"
+	validService := event.Service == "" || event.Service == "control" || event.Service == "control_backup" || event.Service == "chatgpt" || event.Service == "android" || event.Service == "exit" || event.Service == "bootstrap"
 	if !validPhase || !validService {
 		j.dropped++
 		return nil
