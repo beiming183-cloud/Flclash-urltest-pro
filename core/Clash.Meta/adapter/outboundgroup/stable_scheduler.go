@@ -215,6 +215,21 @@ func (s *Stable) schedule(ctx context.Context) {
 			if task == "" {
 				break
 			}
+			if task != state.Primary {
+				warming := false
+				for _, node := range state.Nodes {
+					if node.ID == state.Primary {
+						warming = !stability.CompetitionReady(node)
+						break
+					}
+				}
+				s.mu.Lock()
+				busy := len(s.scheduled)
+				s.mu.Unlock()
+				if warming && busy > 0 {
+					break
+				}
+			}
 			verify := false
 			for _, node := range state.Nodes {
 				if node.ID == task {

@@ -13,7 +13,8 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 )
 
-func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T) {
+func newColdStable(t *testing.T) *Stable {
+	t.Helper()
 	C.SetHomeDir(t.TempDir())
 	proxies := map[string]C.Proxy{}
 	for _, name := range []string{"chain-a", "chain-b", "chain-c", "chain-d"} {
@@ -29,6 +30,12 @@ func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(s.Stop)
+	return s
+}
+
+func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T) {
+	s := newColdStable(t)
 	s.probe = func(ctx context.Context, p C.Proxy, _ string, verify bool, epoch uint64, _ func() bool) stability.Sample {
 		if p.Name() != "chain-c" {
 			<-ctx.Done()
@@ -39,7 +46,6 @@ func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T
 		}
 		return stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Millisecond}
 	}
-	t.Cleanup(s.Stop)
 	s.Start()
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
@@ -52,6 +58,35 @@ func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T
 	conn.Close()
 	if s.Now() != "chain-c" {
 		t.Fatal("startup did not use the freshly verified first usable candidate")
+	}
+}
+
+func TestStartupRefinementIsNotBlockedBySlowBackgroundCandidates(t *testing.T) {
+	s := newColdStable(t)
+	var measurements atomic.Int32
+	s.probe = func(ctx context.Context, p C.Proxy, _ string, _ bool, epoch uint64, _ func() bool) stability.Sample {
+		quick, _ := ctx.Value(stableAvailabilityKey{}).(bool)
+		if p.Name() != "chain-c" {
+			if quick {
+				return stability.Sample{Epoch: epoch, Error: "https_timeout"}
+			}
+			<-ctx.Done()
+			return stability.Sample{Epoch: epoch, Error: "cancelled"}
+		}
+		sample := stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true}
+		if !quick {
+			sample.Latency = time.Millisecond
+			measurements.Add(1)
+		}
+		return sample
+	}
+	s.Start()
+	deadline := time.Now().Add(13 * time.Second)
+	for measurements.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if measurements.Load() < 3 {
+		t.Fatal("slow background checks blocked qualification of the connected route", measurements.Load())
 	}
 }
 
