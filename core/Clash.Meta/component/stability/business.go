@@ -339,17 +339,37 @@ func (f *BusinessFlow) Bytes(upload bool, n int64) {
 	f.bytes(upload, n)
 }
 
+type businessAnomalyObserver struct {
+	observe func(BusinessRoute, string)
+}
+
+var businessAnomaly atomic.Pointer[businessAnomalyObserver]
+
+func RegisterBusinessAnomalyObserver(observe func(BusinessRoute, string)) {
+	businessAnomaly.Store(&businessAnomalyObserver{observe: observe})
+}
+
+func transportAnomaly(reason string) bool {
+	return reason == "timeout" || reason == "connection_reset" || reason == "broken_pipe" || reason == "connection_aborted"
+}
+
 func (f *BusinessFlow) CopyEnded(direction string, err error) {
 	if f == nil {
 		return
 	}
 	b := f.owner
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if f.closed || (direction != "upload" && direction != "download") {
+		b.mu.Unlock()
 		return
 	}
-	f.emit("copy_ended", direction, BusinessError(err))
+	reason := BusinessError(err)
+	f.emit("copy_ended", direction, reason)
+	route, connected := f.event.Route, f.connected
+	b.mu.Unlock()
+	if observer := businessAnomaly.Load(); observer != nil && observer.observe != nil && connected && transportAnomaly(reason) {
+		observer.observe(route, reason)
+	}
 }
 
 func (f *BusinessFlow) Failed(stage string, err error) {

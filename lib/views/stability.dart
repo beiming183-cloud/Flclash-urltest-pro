@@ -208,11 +208,20 @@ class StabilityNodeMetrics extends StatelessWidget {
     final jitter = (node['jitterMs'] as num? ?? 0).round();
     final first = (node['firstResponseMs'] as num? ?? 0).round();
     final p95 = (node['firstResponseP95Ms'] as num? ?? 0).round();
+    final speed = (node['throughputMbps'] as num? ?? 0).toDouble();
+    final loaded = (node['loadedLatencyMs'] as num? ?? 0).round();
+    final measuredAt = DateTime.tryParse(node['throughputAt'] as String? ?? '');
+    final speedFresh = measuredAt != null && DateTime.now().difference(measuredAt) <= const Duration(minutes: 15);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(labels.stabilityRequestLatency(delay, jitter)),
         Text(first > 0 ? labels.stabilityFirstResponse(first, p95) : labels.stabilityFirstResponseUnknown),
+        if (speed > 0 && speedFresh)
+          Text(node['throughputReliable'] == true
+              ? labels.stabilityThroughput(speed.toStringAsFixed(1), loaded)
+              : labels.stabilityThroughputReference(speed.toStringAsFixed(1))),
+        if (node['qualityReady'] != true) Text(labels.stabilityProbation),
       ],
     );
   }

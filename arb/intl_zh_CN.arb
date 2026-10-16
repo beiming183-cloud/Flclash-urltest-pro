@@ -684,5 +684,26 @@
   "stabilitySelectionReordered": "候选池重新排序",
   "stabilitySelectionVerified": "链路与出口验证通过",
   "stabilitySelectionFailed": "校验失败，暂时排除",
-  "stabilityConnectionLogging": "自动记录 ChatGPT 连接，无需开启调试；出错后立即导出，内含中文时间线。"
+  "stabilityConnectionLogging": "自动记录 ChatGPT 连接，无需开启调试；出错后立即导出，内含中文时间线。",
+  "stabilityThroughput": "小流量实测 {speed} Mbps · 负载延迟 {delay} ms",
+  "stabilityThroughputReference": "短时下载参考 {speed} Mbps · 不参与排名",
+  "stabilityProbation": "已可用 · 正在积累稳定性样本",
+  "stabilitySelectionThroughput": "延迟相近，实测下载更快",
+  "@stabilityThroughput": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      },
+      "delay": {
+        "type": "int"
+      }
+    }
+  },
+  "@stabilityThroughputReference": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  }
 }

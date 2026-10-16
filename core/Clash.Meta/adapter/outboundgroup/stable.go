@@ -73,6 +73,14 @@ type Stable struct {
 	fixed           string
 	tlsChecking     bool
 	tlsChecked      map[string]time.Time
+	recheck         map[string]time.Time
+	recheckLast     map[string]time.Time
+	lastBusiness    time.Time
+	speedBusy       bool
+	speedRound      time.Time
+	speedMeasured   map[string]bool
+	speedWindow     time.Time
+	speedReserved   int64
 	transition      sync.Mutex
 	probe           func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
 }
@@ -137,6 +145,8 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	s.scheduled = map[string]bool{}
 	s.wake = make(chan struct{}, 1)
 	s.tlsChecked = map[string]time.Time{}
+	s.recheck, s.recheckLast = map[string]time.Time{}, map[string]time.Time{}
+	s.speedMeasured = map[string]bool{}
 	if err == nil {
 		s.engine.Restore(j.Statistics(s.groupID))
 	}
@@ -207,6 +217,7 @@ func (s *Stable) Snapshot() map[string]any {
 	state.Running = s.cancel != nil
 	inFlight := len(s.probing)
 	pending := s.requested
+	speedReserved := s.speedReserved
 	s.mu.Unlock()
 	names := map[string]string{}
 	for id, p := range s.byID {
@@ -225,7 +236,7 @@ func (s *Stable) Snapshot() map[string]any {
 			status = "stopped"
 		}
 	}
-	return map[string]any{"group": s.Name(), "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining()}
+	return map[string]any{"group": s.Name(), "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining(), "speedPayloadReservedBytes": speedReserved, "speedPayloadHourLimitBytes": speedHourBytes}
 }
 
 func (s *Stable) Configure(paused, powerSave bool) {
@@ -275,6 +286,7 @@ func (s *Stable) Start() {
 	s.engine.Invalidate()
 	s.startupTried = map[string]bool{}
 	s.tlsChecked = map[string]time.Time{}
+	s.recheck, s.recheckLast = map[string]time.Time{}, map[string]time.Time{}
 	if s.fixed != "" {
 		s.requested = s.byName[s.fixed]
 	}
@@ -382,6 +394,7 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	}
 	ctx, cancelProbe := context.WithTimeout(ctx, timeout)
 	defer cancelProbe()
+	probeStarted := time.Now()
 	sample := s.probe(ctx, p, s.expected, verify, state.Epoch, func() bool { return s.engine.Reserve(fault) })
 	if owner.Err() != nil || sample.Error == "cancelled" {
 		return sample, context.Canceled
@@ -389,6 +402,9 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	if sample.Error == "budget_exhausted" {
 		s.log("budget_exhausted", "budget_exhausted", id, false, 0)
 		return sample, errors.New("probe budget exhausted")
+	}
+	if !sample.OK {
+		sample.FailureWait = time.Since(probeStarted)
 	}
 	s.engine.Record(id, sample, elect)
 	if elect {
@@ -416,6 +432,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		return nil, errors.New("stability service stopped")
 	}
 	owner := s.ctx
+	s.lastBusiness = time.Now()
 	s.wg.Add(1)
 	s.mu.Unlock()
 	defer s.wg.Done()
@@ -434,6 +451,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 			return nil, errors.New("no validated residential chain")
 		}
 	}
+	state = s.engine.Snapshot()
 	for _, id := range attempts {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -441,11 +459,10 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		if !containsStable(s.engine.Attempts(), id) {
 			continue
 		}
-		timeout := 4 * time.Second
+		timeout := 3 * time.Second
 		for _, node := range state.Nodes {
-			if node.ID == id && node.P95 > 0 {
-				timeout = time.Duration(max(node.P95*3, node.FirstResponseP95*1.5))*time.Millisecond + 750*time.Millisecond
-				timeout = max(1500*time.Millisecond, min(timeout, 4*time.Second))
+			if node.ID == id {
+				timeout = stability.ConnectionTimeout(node, time.Now())
 			}
 		}
 		attempt, release := context.WithTimeout(ctx, timeout)
@@ -461,6 +478,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 		flow.DialResult(observedError, time.Since(started))
 		release()
 		if err == nil && conn != nil {
+			s.engine.ObserveDial(id, state.Epoch, time.Since(started))
 			if ctx.Err() != nil || !s.engine.PromoteDial(id, state.Epoch) {
 				conn.Close()
 				return nil, errors.New("stale residential establishment")
@@ -482,7 +500,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 			return nil, ctx.Err()
 		}
 		reason, hard := stableError(err)
-		s.engine.Record(id, stability.Sample{Epoch: state.Epoch, Error: reason, Hard: hard}, true)
+		s.engine.Record(id, stability.Sample{Epoch: state.Epoch, Error: reason, Hard: hard, FailureWait: time.Since(started)}, true)
 		s.log("probe", reason, id, false, 0)
 		OnStableRouteChange()
 	}

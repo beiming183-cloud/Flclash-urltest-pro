@@ -641,5 +641,26 @@
   "stabilitySelectionReordered": "Кандидаты пересортированы",
   "stabilitySelectionVerified": "Проверка цепочки и выхода пройдена",
   "stabilitySelectionFailed": "Проверка не пройдена; временно исключён",
-  "stabilityConnectionLogging": "Подключения ChatGPT записываются автоматически. Экспортируйте диагностику сразу после ошибки; архив содержит хронологию."
+  "stabilityConnectionLogging": "Подключения ChatGPT записываются автоматически. Экспортируйте диагностику сразу после ошибки; архив содержит хронологию.",
+  "stabilityThroughput": "Короткая загрузка {speed} Мбит/с · задержка под нагрузкой {delay} мс",
+  "stabilityThroughputReference": "Краткая оценка {speed} Мбит/с · не влияет на выбор",
+  "stabilityProbation": "Доступен · сбор данных о стабильности",
+  "stabilitySelectionThroughput": "Схожая задержка, выше измеренная скорость загрузки",
+  "@stabilityThroughput": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      },
+      "delay": {
+        "type": "int"
+      }
+    }
+  },
+  "@stabilityThroughputReference": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  }
 }

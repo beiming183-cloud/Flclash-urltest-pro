@@ -41,6 +41,34 @@ func businessArchive(t *testing.T, j *Journal) map[string][]byte {
 	return files
 }
 
+func TestBusinessTransportAnomalyExcludesThinkingEOFAndCancellation(t *testing.T) {
+	now := time.Unix(1000, 0)
+	j, _ := OpenJournal(t.TempDir(), func() time.Time { return now })
+	var observed []string
+	RegisterBusinessAnomalyObserver(func(route BusinessRoute, reason string) {
+		j.business.mu.Lock()
+		j.business.mu.Unlock()
+		observed = append(observed, reason)
+	})
+	defer RegisterBusinessAnomalyObserver(nil)
+	f := j.business.begin("android.chat.openai.com", "com.openai.chatgpt")
+	f.DialAttempt(BusinessRoute{Group: j.ID("group"), Node: j.ID("node"), Epoch: 1}, "IP1")
+	f.Open([]string{"IP1"}, 100)
+	now = now.Add(20 * time.Second)
+	j.BusinessTick("", Snapshot{})
+	f.CopyEnded("download", io.EOF)
+	f.CopyEnded("download", context.Canceled)
+	f.CopyEnded("download", nil)
+	if len(observed) != 0 {
+		t.Fatal("thinking, EOF or cancellation triggered a route fault")
+	}
+	f.CopyEnded("download", syscall.ECONNRESET)
+	if len(observed) != 1 || observed[0] != "connection_reset" {
+		t.Fatal("genuine transport failure did not trigger recheck")
+	}
+	f.Finish()
+}
+
 func TestBusinessObservesBlackholeRecoveryAndOldConnection(t *testing.T) {
 	now := time.Unix(1000, 0)
 	j, err := OpenJournal(t.TempDir(), func() time.Time { return now })

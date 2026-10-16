@@ -64,6 +64,10 @@ var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_f
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
+	events["business_recheck"], events["throughput"] = true, true
+	for _, reason := range []string{"throughput_improved", "timeout", "connection_reset", "broken_pipe", "connection_aborted"} {
+		reasons[reason] = true
+	}
 	events["startup_probe"] = true
 	reasons["startup_revalidation"] = true
 	reasons["startup_availability"] = true

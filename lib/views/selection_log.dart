@@ -102,6 +102,7 @@ class SelectionLogEntry extends StatelessWidget {
     };
     final reason = switch (event['reason']) {
       'latency_quality_improved' => labels.stabilitySelectionBetter,
+      'throughput_improved' => labels.stabilitySelectionThroughput,
       'manual' => labels.stabilitySelectionManual,
       'dial_failover' => labels.stabilitySelectionFailover,
       'https_timeout' || 'relay_dial_timeout' || 'exit_query_timeout' || 'tls_handshake_timeout' => labels.stabilitySelectionTimeout,

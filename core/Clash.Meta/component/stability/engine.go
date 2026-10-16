@@ -12,7 +12,7 @@ import (
 )
 
 const MaxCandidates = 512
-const latencyWindow = 12
+const latencyWindow = 64
 
 type Candidate struct {
 	ID      string `json:"id"`
@@ -32,6 +32,7 @@ type Sample struct {
 	Phase         string
 	Service       string
 	TLSInfo       []TLSInfo
+	FailureWait   time.Duration
 }
 
 type TLSInfo struct {
@@ -50,35 +51,60 @@ type TLSInfo struct {
 
 type Stats struct {
 	Candidate
-	Success              float64   `json:"success"`
-	Failure              float64   `json:"failure"`
-	Samples              []float64 `json:"-"`
-	EWMA                 float64   `json:"ewmaMs"`
-	P95                  float64   `json:"p95Ms"`
-	P50                  float64   `json:"p50Ms"`
-	Jitter               float64   `json:"jitterMs"`
-	Recent               []bool    `json:"recentResults,omitempty"`
-	FirstResponse        float64   `json:"firstResponseMs"`
-	FirstResponseP95     float64   `json:"firstResponseP95Ms"`
-	FirstResponseCount   int       `json:"firstResponseSampleCount"`
-	FirstResponseSamples []float64 `json:"-"`
-	Lower                float64   `json:"reliabilityLower"`
-	Count                int       `json:"sampleCount"`
-	LastSuccess          time.Time `json:"lastSuccess"`
-	LastCheck            time.Time `json:"lastCheck"`
-	FirstSuccess         time.Time `json:"-"`
-	TLSAt                time.Time `json:"tlsAt"`
-	ExitAt               time.Time `json:"exitAt"`
-	CoolingUntil         time.Time `json:"coolingUntil"`
-	Streak               int       `json:"successStreak"`
-	LastPhase            string    `json:"phase,omitempty"`
-	LastService          string    `json:"serviceTag,omitempty"`
-	Failures             int       `json:"-"`
-	Cooldowns            int       `json:"-"`
-	LastError            string    `json:"error"`
-	Quarantined          bool      `json:"quarantined"`
+	Success              float64     `json:"success"`
+	Failure              float64     `json:"failure"`
+	Samples              []float64   `json:"-"`
+	EWMA                 float64     `json:"ewmaMs"`
+	P95                  float64     `json:"p95Ms"`
+	P50                  float64     `json:"p50Ms"`
+	P90                  float64     `json:"p90Ms"`
+	MAD                  float64     `json:"madMs"`
+	LatencySamples       int         `json:"latencySampleCount"`
+	QualityStreak        int         `json:"qualityStreak"`
+	QualityReady         bool        `json:"qualityReady"`
+	FirstQuality         time.Time   `json:"-"`
+	LastQuality          time.Time   `json:"-"`
+	SampleTimes          []time.Time `json:"-"`
+	OutcomeTimes         []time.Time `json:"-"`
+	FailureWaitMs        float64     `json:"failureWaitMs"`
+	Jitter               float64     `json:"jitterMs"`
+	Recent               []bool      `json:"recentResults,omitempty"`
+	FirstResponse        float64     `json:"firstResponseMs"`
+	FirstResponseP95     float64     `json:"firstResponseP95Ms"`
+	FirstResponseMedian  float64     `json:"firstResponseMedianMs"`
+	FirstResponseP90     float64     `json:"firstResponseP90Ms"`
+	FirstResponseCount   int         `json:"firstResponseSampleCount"`
+	FirstResponseSamples []float64   `json:"-"`
+	FirstResponseTimes   []time.Time `json:"-"`
+	DialSamples          []float64   `json:"-"`
+	DialTimes            []time.Time `json:"-"`
+	DialP90              float64     `json:"dialP90Ms"`
+	DialCount            int         `json:"dialSampleCount"`
+	LastDial             time.Time   `json:"lastDial"`
+	ThroughputMbps       float64     `json:"throughputMbps"`
+	ThroughputReliable   bool        `json:"throughputReliable"`
+	ThroughputAt         time.Time   `json:"throughputAt"`
+	ThroughputBytes      int64       `json:"throughputBytes"`
+	LoadedLatency        float64     `json:"loadedLatencyMs"`
+	Lower                float64     `json:"reliabilityLower"`
+	Count                int         `json:"sampleCount"`
+	LastSuccess          time.Time   `json:"lastSuccess"`
+	LastCheck            time.Time   `json:"lastCheck"`
+	FirstSuccess         time.Time   `json:"-"`
+	TLSAt                time.Time   `json:"tlsAt"`
+	ExitAt               time.Time   `json:"exitAt"`
+	CoolingUntil         time.Time   `json:"coolingUntil"`
+	Streak               int         `json:"successStreak"`
+	LastPhase            string      `json:"phase,omitempty"`
+	LastService          string      `json:"serviceTag,omitempty"`
+	Failures             int         `json:"-"`
+	Cooldowns            int         `json:"-"`
+	LastError            string      `json:"error"`
+	Quarantined          bool        `json:"quarantined"`
 	decayedAt            time.Time
 	lastFailure          time.Time
+	healthySince         time.Time
+	cooldownDecayedAt    time.Time
 }
 
 type Snapshot struct {
@@ -170,9 +196,8 @@ func (e *Engine) decay(s *Stats, now time.Time) {
 }
 
 func (e *Engine) ready(s *Stats, now time.Time) bool {
-	confirmed := s.Streak >= 3 && s.LastSuccess.Sub(s.FirstSuccess) >= 10*time.Second
 	return !s.Quarantined && !now.Before(s.CoolingUntil) && s.Streak >= 1 &&
-		(confirmed || s.Cooldowns == 0) && s.LastError == "" &&
+		s.LastError == "" &&
 		now.Sub(s.TLSAt) <= 10*time.Minute && !s.TLSAt.IsZero() &&
 		now.Sub(s.ExitAt) <= 30*time.Minute && !s.ExitAt.IsZero()
 }
@@ -186,7 +211,7 @@ func (e *Engine) fresh(s *Stats, now time.Time) bool {
 }
 
 func CompetitionReady(s Stats) bool {
-	return s.Streak >= 3 && s.LastSuccess.Sub(s.FirstSuccess) >= 10*time.Second
+	return s.QualityStreak >= 3 && !s.FirstQuality.IsZero() && s.LastSuccess.Sub(s.FirstQuality) >= 10*time.Second
 }
 
 func LatencyCost(s Stats) float64 {
@@ -197,10 +222,17 @@ func LatencyCost(s Stats) float64 {
 	if p50 <= 0 {
 		p50 = s.EWMA
 	}
-	jitter := math.Max(s.P95-p50, 0)
-	cost := .5*p50 + .3*s.P95 + .2*s.EWMA + .5*jitter
+	p90 := s.P90
+	if p90 <= 0 {
+		p90 = s.P95
+	}
+	cost := .55*p50 + .25*s.EWMA + .2*p90 + .25*s.MAD
 	if s.FirstResponseCount >= 3 {
-		cost += .15 * math.Max(s.FirstResponseP95-2000, 0)
+		first := s.FirstResponseMedian
+		if first <= 0 {
+			first = s.FirstResponseP95
+		}
+		cost += .15 * first
 	}
 	if len(s.Recent) > 0 {
 		failures := 0
@@ -209,7 +241,7 @@ func LatencyCost(s Stats) float64 {
 				failures++
 			}
 		}
-		cost *= 1 + 4*float64(failures)/float64(len(s.Recent))
+		cost += float64(failures) / float64(len(s.Recent)) * math.Max(s.FailureWaitMs, 3000)
 	}
 	return cost
 }
@@ -250,6 +282,15 @@ func (e *Engine) choose(now time.Time) {
 			e.primary = better.ID
 			e.reason = "latency_quality_improved"
 			e.startupPrimary = false
+		}
+		if e.primary == current.ID && !e.startupPrimary {
+			for _, candidate := range pool {
+				if PreferThroughput(*current, *candidate, now) {
+					e.primary = candidate.ID
+					e.reason = "throughput_improved"
+					break
+				}
+			}
 		}
 	}
 	e.active = nil
@@ -349,21 +390,10 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 	}
 	if sample.OK && now.Sub(s.LastSuccess) > freshWindow {
 		s.Streak = 0
-		s.Samples = nil
-		s.Recent = nil
-		s.EWMA = 0
-		s.P95 = 0
-		s.P50 = 0
-		s.Jitter = 0
-		s.FirstResponse = 0
-		s.FirstResponseP95 = 0
-		s.FirstResponseCount = 0
-		s.FirstResponseSamples = nil
+		resetQuality(s)
+		s.healthySince = time.Time{}
 	}
-	s.Recent = append(s.Recent, sample.OK)
-	if len(s.Recent) > latencyWindow {
-		s.Recent = s.Recent[len(s.Recent)-latencyWindow:]
-	}
+	recordOutcome(s, sample.OK, now)
 	s.LastCheck = now
 	s.LastPhase = sample.Phase
 	s.LastService = sample.Service
@@ -377,6 +407,7 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		s.LastSuccess = now
 		s.LastError = ""
 		s.Failures = 0
+		decayCooldown(s, now)
 		if s.Streak == 0 {
 			s.FirstSuccess = now
 		}
@@ -391,34 +422,66 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		if sample.FirstResponse > 0 {
 			s.FirstResponse = float64(sample.FirstResponse) / float64(time.Millisecond)
 			s.FirstResponseSamples = append(s.FirstResponseSamples, s.FirstResponse)
-			if len(s.FirstResponseSamples) > latencyWindow {
+			s.FirstResponseTimes = append(s.FirstResponseTimes, now)
+			for len(s.FirstResponseSamples) > latencyWindow || len(s.FirstResponseTimes) > 1 && now.Sub(s.FirstResponseTimes[0]) > 5*time.Minute {
 				s.FirstResponseSamples = s.FirstResponseSamples[1:]
+				s.FirstResponseTimes = s.FirstResponseTimes[1:]
 			}
 			s.FirstResponseCount = len(s.FirstResponseSamples)
 			firstResponses := append([]float64(nil), s.FirstResponseSamples...)
 			sort.Float64s(firstResponses)
 			s.FirstResponseP95 = firstResponses[int(math.Ceil(.95*float64(len(firstResponses))))-1]
+			s.FirstResponseMedian = firstResponses[(len(firstResponses)-1)/2]
+			s.FirstResponseP90 = firstResponses[int(math.Ceil(.9*float64(len(firstResponses))))-1]
 		}
 		if ms > 0 {
+			if s.QualityStreak == 0 {
+				s.FirstQuality = now
+			}
+			s.QualityStreak++
 			if s.EWMA == 0 {
 				s.EWMA = ms
 			} else {
-				s.EWMA = .2*ms + .8*s.EWMA
+				alpha := 1 - math.Exp(-math.Ln2*math.Max(now.Sub(s.LastQuality).Seconds(), .001)/30)
+				s.EWMA = alpha*ms + (1-alpha)*s.EWMA
 			}
+			s.LastQuality = now
 			s.Samples = append(s.Samples, ms)
-			if len(s.Samples) > latencyWindow {
+			s.SampleTimes = append(s.SampleTimes, now)
+			for len(s.Samples) > latencyWindow || len(s.SampleTimes) > 1 && now.Sub(s.SampleTimes[0]) > 5*time.Minute {
 				s.Samples = s.Samples[1:]
+				s.SampleTimes = s.SampleTimes[1:]
 			}
+			s.LatencySamples = len(s.Samples)
 			sorted := append([]float64(nil), s.Samples...)
 			sort.Float64s(sorted)
 			s.P95 = sorted[int(math.Ceil(.95*float64(len(sorted))))-1]
 			s.P50 = sorted[(len(sorted)-1)/2]
+			s.P90 = sorted[int(math.Ceil(.9*float64(len(sorted))))-1]
+			deviations := make([]float64, len(sorted))
+			for i, value := range sorted {
+				deviations[i] = math.Abs(value - s.P50)
+			}
+			sort.Float64s(deviations)
+			s.MAD = deviations[(len(deviations)-1)/2]
 			s.Jitter = math.Max(s.P95-s.P50, 0)
 		}
 	} else {
 		s.Failure++
 		s.Count++
 		s.Streak = 0
+		s.QualityStreak = 0
+		s.FirstQuality = time.Time{}
+		s.healthySince = time.Time{}
+		s.cooldownDecayedAt = time.Time{}
+		if sample.FailureWait > 0 {
+			wait := math.Min(float64(sample.FailureWait)/float64(time.Millisecond), 15000)
+			if s.FailureWaitMs == 0 {
+				s.FailureWaitMs = wait
+			} else {
+				s.FailureWaitMs = .25*wait + .75*s.FailureWaitMs
+			}
+		}
 		s.LastError = sample.Error
 		s.Failures++
 		s.lastFailure = now
@@ -483,8 +546,12 @@ func (e *Engine) Snapshot() Snapshot {
 			result.StartupHints = append(result.StartupHints, hint)
 		}
 		e.decay(&s, now)
+		s.QualityReady = CompetitionReady(s)
 		s.Samples = nil
 		s.FirstResponseSamples = nil
+		s.SampleTimes, s.OutcomeTimes, s.FirstResponseTimes = nil, nil, nil
+		s.DialSamples, s.DialTimes = nil, nil
+		s.Recent = append([]bool(nil), s.Recent...)
 		result.Nodes = append(result.Nodes, s)
 	}
 	return result
@@ -580,6 +647,9 @@ func (e *Engine) Invalidate() {
 		s.FirstResponseCount = 0
 		s.FirstResponseSamples = nil
 		s.Quarantined = false
+		resetQuality(s)
+		resetTransport(s)
+		s.healthySince = time.Time{}
 		s.CoolingUntil = time.Time{}
 		s.Failures = 0
 	}

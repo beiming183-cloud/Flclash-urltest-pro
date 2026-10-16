@@ -69,7 +69,8 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 		if !needsValidation && stability.CompetitionReady(node) && now.Sub(node.LastSuccess) < 90*time.Second {
 			continue
 		}
-		if len(state.Active) >= 3 && (!good || stability.LatencyCost(node)+15 >= worstCost) {
+		measured := node.EWMA > 0 && node.P95 > 0
+		if len(state.Active) >= 3 && measured && (!good || stability.LatencyCost(node)+15 >= worstCost) {
 			continue
 		}
 		candidates = append(candidates, node)
@@ -142,6 +143,8 @@ func (s *Stable) schedule(ctx context.Context) {
 	defer ticker.Stop()
 	lastExplore := time.Time{}
 	coldIndex := 0
+	started := time.Now()
+	explored := map[string]bool{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -157,7 +160,7 @@ func (s *Stable) schedule(ctx context.Context) {
 		for slot := 0; slot < 2; slot++ {
 			now := time.Now()
 			state := s.engine.Snapshot()
-			if state.BudgetUsed >= 840 {
+			if state.BudgetUsed >= 900 {
 				break
 			}
 			task := ""
@@ -170,6 +173,17 @@ func (s *Stable) schedule(ctx context.Context) {
 						task = requested
 					}
 				}
+			}
+			if task == "" {
+				s.mu.Lock()
+				for id := range s.recheck {
+					if !s.scheduled[id] && !s.probing[id] {
+						task = id
+						delete(s.recheck, id)
+						break
+					}
+				}
+				s.mu.Unlock()
 			}
 			for _, id := range state.Active {
 				if task != "" {
@@ -201,19 +215,31 @@ func (s *Stable) schedule(ctx context.Context) {
 			if task == "" && competitionBudgetAvailable(state) {
 				task = competitionCandidate(state, now, s.pending)
 			}
-			if task == "" && competitionBudgetAvailable(state) && now.Sub(lastExplore) >= time.Minute {
+			if task == "" && competitionBudgetAvailable(state) && now.Sub(lastExplore) >= 30*time.Second {
 				for n := 0; n < len(state.Nodes); n++ {
 					node := state.Nodes[coldIndex%len(state.Nodes)]
 					coldIndex++
 					if !containsStable(state.Active, node.ID) && !node.Quarantined && !s.pending(node.ID) && !now.Before(node.CoolingUntil) {
 						task = node.ID
-						lastExplore = now
 						break
 					}
 				}
 			}
 			if task == "" {
 				break
+			}
+			cold := false
+			for _, node := range state.Nodes {
+				if node.ID == task {
+					cold = node.EWMA <= 0
+					break
+				}
+			}
+			if cold && !containsStable(state.Active, task) {
+				burst := now.Sub(started) < time.Minute && len(explored) < 12
+				if !burst && now.Sub(lastExplore) < 30*time.Second {
+					break
+				}
 			}
 			if task != state.Primary {
 				warming := false
@@ -236,11 +262,16 @@ func (s *Stable) schedule(ctx context.Context) {
 					verify = node.TLSAt.IsZero() || now.Sub(node.TLSAt) >= 9*time.Minute || node.ExitAt.IsZero() || now.Sub(node.ExitAt) >= 29*time.Minute
 				}
 			}
-			if !s.launchProbe(ctx, task, verify) {
+			if !s.launchProbe(ctx, task, verify, containsStable(state.Active, task)) {
 				break
+			}
+			if cold && !containsStable(state.Active, task) {
+				explored[task] = true
+				lastExplore = now
 			}
 		}
 		s.checkTargetTLS(ctx)
+		s.maybeMeasureThroughput(ctx)
 		s.journal.BusinessTick(s.groupID, s.engine.Snapshot())
 	}
 }

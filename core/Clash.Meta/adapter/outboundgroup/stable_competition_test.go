@@ -7,6 +7,18 @@ import (
 	"github.com/metacubex/mihomo/component/stability"
 )
 
+func TestPolicyFullPoolStillDiscoversUnmeasuredCandidate(t *testing.T) {
+	now := time.Now()
+	state := stability.Snapshot{Active: []string{"a", "b", "c"}}
+	for _, id := range state.Active {
+		state.Nodes = append(state.Nodes, stability.Stats{Candidate: stability.Candidate{ID: id}, EWMA: 450, P50: 450, P95: 500})
+	}
+	state.Nodes = append(state.Nodes, stability.Stats{Candidate: stability.Candidate{ID: "unknown"}})
+	if got := competitionCandidate(state, now, func(string) bool { return false }); got != "unknown" {
+		t.Fatal("the first three routes closed competition to unexplored routes", got)
+	}
+}
+
 func TestFullActivePoolStillValidatesFastChallenger(t *testing.T) {
 	now := time.Unix(1000, 0)
 	state := stability.Snapshot{Active: []string{"a", "b", "c"}}

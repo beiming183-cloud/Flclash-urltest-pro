@@ -1,6 +1,19 @@
 package tunnel
 
-import "sync"
+import (
+	"github.com/metacubex/mihomo/component/stability"
+	"sync"
+)
+
+func StabilityBusinessAnomaly(route stability.BusinessRoute, reason string) {
+	for _, p := range AllProxies() {
+		if g, ok := p.Adapter().(interface {
+			BusinessAnomaly(stability.BusinessRoute, string)
+		}); ok {
+			g.BusinessAnomaly(route, reason)
+		}
+	}
+}
 
 var stabilityLifecycle sync.Mutex
 var stabilityRunning bool

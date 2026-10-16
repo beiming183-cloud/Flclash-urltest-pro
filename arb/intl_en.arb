@@ -684,5 +684,26 @@
   "stabilitySelectionReordered": "Candidate pool reordered",
   "stabilitySelectionVerified": "Chain and exit verification passed",
   "stabilitySelectionFailed": "Verification failed; candidate excluded",
-  "stabilityConnectionLogging": "ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included."
+  "stabilityConnectionLogging": "ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included.",
+  "stabilityThroughput": "Short download {speed} Mbps · loaded latency {delay} ms",
+  "stabilityThroughputReference": "Short download reference {speed} Mbps · excluded from ranking",
+  "stabilityProbation": "Available · gathering stability evidence",
+  "stabilitySelectionThroughput": "Similar latency, stronger measured download speed",
+  "@stabilityThroughput": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      },
+      "delay": {
+        "type": "int"
+      }
+    }
+  },
+  "@stabilityThroughputReference": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  }
 }

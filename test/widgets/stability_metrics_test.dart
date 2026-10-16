@@ -9,6 +9,20 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('short speed samples are references and pending stability is visible', (tester) async {
+    await tester.pumpWidget(_TestApp(child: StabilityNodeMetrics(node: {
+      'ewmaMs': 200,
+      'throughputMbps': 24.6,
+      'throughputReliable': false,
+      'throughputAt': DateTime.now().toUtc().toIso8601String(),
+      'qualityStreak': 1,
+    })));
+    await tester.pumpAndSettle();
+    expect(find.text('Short download reference 24.6 Mbps · excluded from ranking'), findsOneWidget);
+    expect(find.text('Available · gathering stability evidence'), findsOneWidget);
+    expect(tester.takeException(), null);
+  });
+
   testWidgets('request delay and first-response measurement are separate', (tester) async {
     await tester.pumpWidget(const _TestApp(child: StabilityNodeMetrics(node: {
       'ewmaMs': 200,
