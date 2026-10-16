@@ -65,7 +65,10 @@ func stableError(err error) (string, bool) {
 	return "unknown", false
 }
 
+type stableAvailabilityKey struct{}
+
 func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify bool, epoch uint64, reserve func() bool) stability.Sample {
+	quick, _ := ctx.Value(stableAvailabilityKey{}).(bool)
 	sample := stability.Sample{Epoch: epoch, Phase: "delay", Service: "control"}
 	status, _ := utils.NewUnsignedRanges[uint16]("204")
 	measure := func(url string) (uint16, error) {
@@ -91,26 +94,31 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		}
 		return delay, err
 	}
-	delay, err := measure("https://www.gstatic.com/generate_204")
-	if err != nil && ctx.Err() == nil {
-		_, hard := stableError(err)
-		if !hard {
-			sample.Service = "control_backup"
-			delay, err = measure("https://cp.cloudflare.com/generate_204")
+	if !quick {
+		delay, err := measure("https://www.gstatic.com/generate_204")
+		if err != nil && ctx.Err() == nil {
+			_, hard := stableError(err)
+			if !hard {
+				sample.Service = "control_backup"
+				delay, err = measure("https://cp.cloudflare.com/generate_204")
+			}
+		}
+		if err != nil {
+			sample.Error, sample.Hard = stableError(err)
+			if sample.Error == "relay_dial_timeout" {
+				sample.Error = "https_timeout"
+			}
+			return sample
+		}
+		sample.Latency = time.Duration(delay) * time.Millisecond
+		sample.TLS = true
+		if !verify {
+			sample.OK = true
+			return sample
 		}
 	}
-	if err != nil {
-		sample.Error, sample.Hard = stableError(err)
-		if sample.Error == "relay_dial_timeout" {
-			sample.Error = "https_timeout"
-		}
-		return sample
-	}
-	sample.Latency = time.Duration(delay) * time.Millisecond
-	sample.TLS = true
-	if !verify {
-		sample.OK = true
-		return sample
+	if quick {
+		sample.Phase, sample.Service = "exit", "bootstrap"
 	}
 	transport := &http.Transport{DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		if !reserve() {
@@ -125,7 +133,11 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	request := func(url string) ([]byte, error) {
-		requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		timeout := 4 * time.Second
+		if quick {
+			timeout = 1400 * time.Millisecond
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, url, nil)
 		if err != nil {
@@ -143,7 +155,9 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	}
 	if verify {
 		sample.TLS = true
-		sample.Phase, sample.Service = "exit", "exit"
+		if !quick {
+			sample.Phase, sample.Service = "exit", "exit"
+		}
 		err, hard := verifyStableExit(expected, request)
 		if err != nil {
 			sample.Error, sample.Hard = stableError(err)

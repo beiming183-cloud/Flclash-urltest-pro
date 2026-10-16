@@ -93,12 +93,23 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 }
 
 func (s *Stable) launchProbe(ctx context.Context, id string, verify bool, fault ...bool) bool {
+	return s.launchProbeMode(ctx, id, verify, false, fault...)
+}
+
+func (s *Stable) launchProbeMode(ctx context.Context, id string, verify, quick bool, fault ...bool) bool {
 	s.mu.Lock()
-	if s.cancel == nil || s.scheduled[id] || s.probing[id] || len(s.scheduled) >= 2 {
+	limit := 2
+	if quick {
+		limit = 4
+	}
+	if s.cancel == nil || ctx.Err() != nil || s.scheduled[id] || s.probing[id] || len(s.scheduled) >= limit {
 		s.mu.Unlock()
 		return false
 	}
 	s.scheduled[id] = true
+	if quick {
+		s.startupTried[id] = true
+	}
 	s.wg.Add(1)
 	s.mu.Unlock()
 	go func() {
@@ -114,10 +125,14 @@ func (s *Stable) launchProbe(ctx context.Context, id string, verify bool, fault 
 			}
 		}()
 		if len(s.engine.Snapshot().Active) == 0 {
-			s.log("startup_probe", "startup_revalidation", id, false, 0)
+			reason := "startup_revalidation"
+			if quick {
+				reason = "startup_availability"
+			}
+			s.log("startup_probe", reason, id, false, 0)
 		}
 		emergency := len(fault) > 0 && fault[0]
-		_, _ = s.probeCandidate(ctx, id, verify, true, emergency)
+		_, _ = s.probeCandidate(ctx, id, verify, true, emergency, quick)
 	}()
 	return true
 }
@@ -167,6 +182,12 @@ func (s *Stable) schedule(ctx context.Context) {
 					}
 					if state.PowerSave {
 						interval *= 3
+					}
+					if !stability.CompetitionReady(node) {
+						interval = 5 * time.Second
+						if node.EWMA <= 0 {
+							interval = 0
+						}
 					}
 					if node.ID == id && !s.pending(id) && now.Sub(node.LastCheck) >= interval {
 						task = id

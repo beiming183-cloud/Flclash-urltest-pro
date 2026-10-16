@@ -113,26 +113,27 @@ type SelectionEvent struct {
 }
 
 type Engine struct {
-	startup     map[string]StartupHint
-	mu          sync.Mutex
-	now         func() time.Time
-	nodes       map[string]*Stats
-	order       []string
-	epoch       uint64
-	generation  uint64
-	primary     string
-	active      []string
-	reason      string
-	paused      bool
-	powerSave   bool
-	budgetStart time.Time
-	budget      int
-	network     string
-	networks    map[string][]Stats
-	networkLRU  []string
-	lastSwitch  time.Time
-	manual      string
-	selections  []SelectionEvent
+	startup        map[string]StartupHint
+	mu             sync.Mutex
+	now            func() time.Time
+	nodes          map[string]*Stats
+	order          []string
+	epoch          uint64
+	generation     uint64
+	primary        string
+	active         []string
+	reason         string
+	paused         bool
+	powerSave      bool
+	budgetStart    time.Time
+	budget         int
+	network        string
+	networks       map[string][]Stats
+	networkLRU     []string
+	lastSwitch     time.Time
+	manual         string
+	startupPrimary bool
+	selections     []SelectionEvent
 }
 
 func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
@@ -236,17 +237,19 @@ func (e *Engine) choose(now time.Time) {
 	}
 	if e.primary == "" && !e.paused && len(pool) > 0 {
 		e.primary = pool[0].ID
+		e.startupPrimary = pool[0].EWMA <= 0
 	}
 	if e.manual != "" && e.fresh(e.nodes[e.manual], now) {
 		e.primary = e.manual
 	}
-	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && now.Sub(e.lastSwitch) >= 30*time.Second {
+	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && (e.startupPrimary || now.Sub(e.lastSwitch) >= 30*time.Second) {
 		current, better := e.nodes[e.primary], pool[0]
 		currentCost, betterCost := LatencyCost(*current), LatencyCost(*better)
 		if better.ID != current.ID && CompetitionReady(*better) &&
 			betterCost < currentCost*.88 && betterCost+25 < currentCost {
 			e.primary = better.ID
 			e.reason = "latency_quality_improved"
+			e.startupPrimary = false
 		}
 	}
 	e.active = nil

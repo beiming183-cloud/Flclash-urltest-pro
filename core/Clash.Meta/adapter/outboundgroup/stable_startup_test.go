@@ -7,9 +7,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/metacubex/mihomo/adapter"
+	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/component/stability"
 	C "github.com/metacubex/mihomo/constant"
 )
+
+func TestStartupWithoutHistoryFindsUsableCandidateBehindStalledPair(t *testing.T) {
+	C.SetHomeDir(t.TempDir())
+	proxies := map[string]C.Proxy{}
+	for _, name := range []string{"chain-a", "chain-b", "chain-c", "chain-d"} {
+		relay := "RF2-Relay-" + name
+		proxies[relay] = adapter.NewProxy(outbound.NewBase(outbound.BaseOption{Name: relay, Type: C.Hysteria2}))
+		p, err := outbound.NewHttp(outbound.HttpOption{BasicOption: outbound.BasicOption{DialerProxy: relay, DialerForAPI: &connectDialer{}}, Name: name, Server: "198.51.100.10", Port: 8080, UserName: "same-account", Password: "test-password"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		proxies[name] = adapter.NewProxy(p)
+	}
+	s, err := NewStable(GroupCommonOption{Name: "IP1", Proxies: []string{"chain-a", "chain-b", "chain-c", "chain-d"}}, StableOption{ExpectedExit: "203.0.113.10", Endpoints: []string{"198.51.100.10:8080"}}, proxies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.probe = func(ctx context.Context, p C.Proxy, _ string, verify bool, epoch uint64, _ func() bool) stability.Sample {
+		if p.Name() != "chain-c" {
+			<-ctx.Done()
+			return stability.Sample{Epoch: epoch, Error: "cancelled"}
+		}
+		if !verify {
+			t.Error("startup skipped fresh validation")
+		}
+		return stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Millisecond}
+	}
+	t.Cleanup(s.Stop)
+	s.Start()
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	m := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
+	m.SetRemoteAddress("example.com:443")
+	conn, err := s.DialContext(ctx, m)
+	if err != nil {
+		t.Fatal("usable third candidate remained blocked behind slow startup checks", err)
+	}
+	conn.Close()
+	if s.Now() != "chain-c" {
+		t.Fatal("startup did not use the freshly verified first usable candidate")
+	}
+}
 
 func TestStartupFirstRequestUsesVerifiedBackupWhilePrimaryProbeStalls(t *testing.T) {
 	s, a, b, _ := testStable(t)

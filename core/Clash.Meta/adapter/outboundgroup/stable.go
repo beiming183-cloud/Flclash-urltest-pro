@@ -49,30 +49,32 @@ type StableOption struct {
 
 type Stable struct {
 	*GroupBase
-	engine      *stability.Engine
-	journal     *stability.Journal
-	groupID     string
-	expected    string
-	byID        map[string]C.Proxy
-	byName      map[string]string
-	mu          sync.Mutex
-	cancel      context.CancelFunc
-	ctx         context.Context
-	wg          sync.WaitGroup
-	slots       chan struct{}
-	probing     map[string]bool
-	scheduled   map[string]bool
-	wake        chan struct{}
-	ready       chan struct{}
-	networkKey  string
-	online      bool
-	preferred   []string
-	requested   string
-	fixed       string
-	tlsChecking bool
-	tlsChecked  map[string]time.Time
-	transition  sync.Mutex
-	probe       func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
+	engine          *stability.Engine
+	journal         *stability.Journal
+	groupID         string
+	expected        string
+	byID            map[string]C.Proxy
+	byName          map[string]string
+	mu              sync.Mutex
+	cancel          context.CancelFunc
+	ctx             context.Context
+	wg              sync.WaitGroup
+	slots           chan struct{}
+	backgroundSlots chan struct{}
+	startupTried    map[string]bool
+	probing         map[string]bool
+	scheduled       map[string]bool
+	wake            chan struct{}
+	ready           chan struct{}
+	networkKey      string
+	online          bool
+	preferred       []string
+	requested       string
+	fixed           string
+	tlsChecking     bool
+	tlsChecked      map[string]time.Time
+	transition      sync.Mutex
+	probe           func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
 }
 
 func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C.Proxy) (*Stable, error) {
@@ -93,7 +95,7 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	if len(endpoints) == 0 {
 		return nil, errors.New("stable-failover requires residential-endpoints")
 	}
-	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 2), probing: map[string]bool{}, probe: probeStable}
+	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 4), backgroundSlots: make(chan struct{}, 2), startupTried: map[string]bool{}, probing: map[string]bool{}, probe: probeStable}
 	candidates := []stability.Candidate{}
 	account := ""
 	for _, name := range option.Proxies {
@@ -271,6 +273,7 @@ func (s *Stable) Start() {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	ctx := s.ctx
 	s.engine.Invalidate()
+	s.startupTried = map[string]bool{}
 	s.tlsChecked = map[string]time.Time{}
 	if s.fixed != "" {
 		s.requested = s.byName[s.fixed]
@@ -322,7 +325,8 @@ func (s *Stable) Probe(ctx context.Context, id string, verify, elect bool) (stab
 	return s.probeCandidate(ctx, id, verify, elect, false)
 }
 
-func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, fault bool) (stability.Sample, error) {
+func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, fault bool, bootstrap ...bool) (stability.Sample, error) {
+	quick := len(bootstrap) > 0 && bootstrap[0]
 	p := s.byID[id]
 	if p == nil {
 		return stability.Sample{}, errors.New("unknown stability candidate")
@@ -345,6 +349,14 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	defer cancel()
 	stop := context.AfterFunc(owner, cancel)
 	defer stop()
+	if !quick {
+		select {
+		case s.backgroundSlots <- struct{}{}:
+			defer func() { <-s.backgroundSlots }()
+		case <-ctx.Done():
+			return stability.Sample{}, ctx.Err()
+		}
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -363,6 +375,10 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 		if len(state.Active) == 0 {
 			timeout = 6 * time.Second
 		}
+	}
+	if quick {
+		timeout = 3 * time.Second
+		ctx = context.WithValue(ctx, stableAvailabilityKey{}, true)
 	}
 	ctx, cancelProbe := context.WithTimeout(ctx, timeout)
 	defer cancelProbe()

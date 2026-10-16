@@ -28,6 +28,28 @@ func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 		}
 		ids = next
 	}
+	quickIDs := []string{}
+	s.mu.Lock()
+	for _, id := range ids {
+		if !s.startupTried[id] {
+			quickIDs = append(quickIDs, id)
+		}
+	}
+	s.mu.Unlock()
+	if len(quickIDs) > 0 {
+		for _, id := range quickIDs {
+			if len(s.engine.Snapshot().Active) > 0 {
+				return
+			}
+			if s.pending(id) {
+				continue
+			}
+			if !s.launchProbeMode(ctx, id, true, true, fault...) {
+				return
+			}
+		}
+		return
+	}
 	for _, id := range ids {
 		if s.pending(id) {
 			continue
