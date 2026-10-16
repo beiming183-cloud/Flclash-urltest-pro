@@ -116,3 +116,20 @@ func TestPolicyThroughputCannotOverrideLatencyOrIncompleteEvidence(t *testing.T)
 		t.Fatal("loaded latency regression was ignored")
 	}
 }
+
+func TestPolicyThroughputCanUpgradeAlreadyFastBootstrapPrimary(t *testing.T) {
+	now := time.Unix(1000, 0)
+	e, _ := New([]Candidate{{"a", "r1", "x"}, {"b", "r2", "y"}}, func() time.Time { return now })
+	e.Record("a", Sample{Epoch: 1, OK: true, TLS: true, Exit: true}, true)
+	for i := 0; i < 3; i++ {
+		now = now.Add(5 * time.Second)
+		e.Record("a", Sample{Epoch: 1, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond, FirstResponse: 200 * time.Millisecond}, true)
+		e.Record("b", Sample{Epoch: 1, OK: true, TLS: true, Exit: true, Latency: 205 * time.Millisecond, FirstResponse: 205 * time.Millisecond}, true)
+	}
+	now = now.Add(20 * time.Second)
+	e.ObserveThroughput("a", 1, 5, 1048576, true, 200*time.Millisecond)
+	e.ObserveThroughput("b", 1, 20, 1048576, true, 205*time.Millisecond)
+	if state := e.Snapshot(); state.Primary != "b" || state.Reason != "throughput_improved" {
+		t.Fatal("a low-latency bootstrap primary prevented a measured throughput upgrade", state.Primary, state.Reason)
+	}
+}

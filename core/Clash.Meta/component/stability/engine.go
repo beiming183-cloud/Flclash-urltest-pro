@@ -283,11 +283,12 @@ func (e *Engine) choose(now time.Time) {
 			e.reason = "latency_quality_improved"
 			e.startupPrimary = false
 		}
-		if e.primary == current.ID && !e.startupPrimary {
+		if e.primary == current.ID && now.Sub(e.lastSwitch) >= 30*time.Second {
 			for _, candidate := range pool {
 				if PreferThroughput(*current, *candidate, now) {
 					e.primary = candidate.ID
 					e.reason = "throughput_improved"
+					e.startupPrimary = false
 					break
 				}
 			}
