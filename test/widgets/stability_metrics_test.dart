@@ -9,6 +9,17 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('expired health is distinguished from a connection failure', (tester) async {
+    await tester.pumpWidget(const _TestApp(child: SelectionLogEntry(
+      group: 'IP1',
+      names: {'a': 'Candidate'},
+      event: {'kind': 'removed', 'node': 'a', 'reason': 'health_check_expired'},
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Health verification expired; waiting for recheck'), findsOneWidget);
+    expect(tester.takeException(), null);
+  });
+
   testWidgets('short speed samples are references and pending stability is visible', (tester) async {
     await tester.pumpWidget(_TestApp(child: StabilityNodeMetrics(node: {
       'ewmaMs': 200,

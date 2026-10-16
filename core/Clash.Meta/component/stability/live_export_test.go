@@ -17,6 +17,7 @@ func TestExportIncludesLivePrimaryAndCurrentSamples(t *testing.T) {
 	group := j.ID("group")
 	node := j.ID("node")
 	state := Snapshot{Primary: node, Active: []string{node}, Running: true, Nodes: []Stats{{Candidate: Candidate{node, j.ID("relay"), j.ID("airport")}, Count: 7, EWMA: 300, LastSuccess: time.Now()}}}
+	state.Scheduler = map[string]any{"candidates": map[string]int{"identityRecheck": 2}, "competitionBudgetAvailable": true}
 	data, err := j.Export(map[string]Snapshot{group: state})
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +39,9 @@ func TestExportIncludesLivePrimaryAndCurrentSamples(t *testing.T) {
 		}
 		if f.Name == "states.json" && !strings.Contains(string(body), `"primary":"`+node+`"`) {
 			t.Fatal("primary omitted")
+		}
+		if f.Name == "states.json" && !strings.Contains(string(body), `"identityRecheck":2`) {
+			t.Fatal("scheduler omitted")
 		}
 		if f.Name == "nodes.csv" && !strings.Contains(string(body), ",7,300.00,") {
 			t.Fatal("stale statistics exported")

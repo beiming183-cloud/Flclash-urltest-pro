@@ -124,6 +124,7 @@ type Snapshot struct {
 	NetworkKey    string             `json:"networkKey,omitempty"`
 	Networks      map[string][]Stats `json:"networks,omitempty"`
 	Selections    []SelectionEvent   `json:"selections,omitempty"`
+	Scheduler     map[string]any     `json:"scheduler,omitempty"`
 }
 
 type SelectionEvent struct {
@@ -136,6 +137,11 @@ type SelectionEvent struct {
 	Jitter          float64   `json:"jitterMs"`
 	FirstResponse   float64   `json:"firstResponseMs,omitempty"`
 	PreviousLatency float64   `json:"previousLatencyMs,omitempty"`
+	Cost            float64   `json:"qualityCostMs,omitempty"`
+	PreviousCost    float64   `json:"previousQualityCostMs,omitempty"`
+	Samples         int       `json:"latencySampleCount"`
+	Qualified       bool      `json:"qualityReady"`
+	HealthAgeMs     int64     `json:"healthAgeMs"`
 }
 
 type Engine struct {
@@ -157,6 +163,7 @@ type Engine struct {
 	networks       map[string][]Stats
 	networkLRU     []string
 	lastSwitch     time.Time
+	lastPoolChange time.Time
 	manual         string
 	startupPrimary bool
 	selections     []SelectionEvent
@@ -227,7 +234,7 @@ func LatencyCost(s Stats) float64 {
 		p90 = s.P95
 	}
 	cost := .55*p50 + .25*s.EWMA + .2*p90 + .25*s.MAD
-	if s.FirstResponseCount >= 3 {
+	if s.FirstResponseCount > 0 {
 		first := s.FirstResponseMedian
 		if first <= 0 {
 			first = s.FirstResponseP95
@@ -304,6 +311,16 @@ func (e *Engine) choose(now time.Time) {
 		relays[s.Relay] = true
 		airports[s.Airport] = true
 	}
+	for _, id := range previousActive {
+		if len(e.active) == 3 {
+			break
+		}
+		if !contains(e.active, id) && e.fresh(e.nodes[id], now) {
+			e.active = append(e.active, id)
+			s := e.nodes[id]
+			relays[s.Relay], airports[s.Airport] = true, true
+		}
+	}
 	for pass := 0; pass < 3 && len(e.active) < 3; pass++ {
 		for _, s := range pool {
 			if pass == 0 && len(pool) > 0 && LatencyCost(*s) > LatencyCost(*pool[0])*1.25+25 {
@@ -320,6 +337,60 @@ func (e *Engine) choose(now time.Time) {
 			}
 		}
 	}
+	replaced := map[string]string{}
+	if len(e.active) == 3 && !e.paused {
+		for _, challenger := range pool {
+			if contains(e.active, challenger.ID) || !CompetitionReady(*challenger) {
+				continue
+			}
+			for index := 1; index < len(e.active); index++ {
+				incumbent := e.nodes[e.active[index]]
+				duplicate, unused := false, true
+				for i, id := range e.active {
+					if i == index {
+						continue
+					}
+					duplicate = duplicate || e.nodes[id].Relay == incumbent.Relay
+					unused = unused && e.nodes[id].Relay != challenger.Relay
+				}
+				if duplicate && unused && LatencyCost(*challenger) <= LatencyCost(*incumbent)*1.25+25 {
+					replaced[challenger.ID] = incumbent.ID
+					e.active[index] = challenger.ID
+					break
+				}
+			}
+			if len(replaced) > 0 {
+				break
+			}
+		}
+	}
+	if len(e.active) == 3 && len(replaced) == 0 && !e.paused && now.Sub(e.lastPoolChange) >= 30*time.Second {
+		for _, challenger := range pool {
+			if contains(e.active, challenger.ID) || !CompetitionReady(*challenger) {
+				continue
+			}
+			worst := 1
+			if LatencyCost(*e.nodes[e.active[2]]) > LatencyCost(*e.nodes[e.active[1]]) {
+				worst = 2
+			}
+			incumbent := e.nodes[e.active[worst]]
+			cost, oldCost := LatencyCost(*challenger), LatencyCost(*incumbent)
+			if cost < oldCost*.88 && cost+25 < oldCost {
+				replaced[challenger.ID] = incumbent.ID
+				e.active[worst] = challenger.ID
+				break
+			}
+		}
+	}
+	changed := len(e.active) != len(previousActive)
+	for _, id := range e.active {
+		if !contains(previousActive, id) {
+			changed = true
+		}
+	}
+	if changed {
+		e.lastPoolChange = now
+	}
 	if old == "" && e.primary != "" {
 		e.reason = "promote"
 	}
@@ -335,7 +406,7 @@ func (e *Engine) choose(now time.Time) {
 	}
 	for _, id := range e.active {
 		if id != e.primary && !contains(previousActive, id) {
-			e.recordSelection("backup", id, "", "pool_selected")
+			e.recordSelection("backup", id, replaced[id], "pool_selected")
 		}
 	}
 	for _, id := range previousActive {
@@ -343,6 +414,8 @@ func (e *Engine) choose(now time.Time) {
 			reason := "pool_replaced"
 			if e.nodes[id].LastError != "" {
 				reason = e.nodes[id].LastError
+			} else if !e.fresh(e.nodes[id], now) {
+				reason = "health_check_expired"
 			}
 			e.recordSelection("removed", id, "", reason)
 		}
@@ -355,8 +428,18 @@ func (e *Engine) recordSelection(kind, id, previous, reason string) {
 		return
 	}
 	event := SelectionEvent{Time: e.now(), Kind: kind, Node: id, Previous: previous, Reason: reason, Latency: node.EWMA, Jitter: node.Jitter, FirstResponse: node.FirstResponse}
+	event.Samples, event.Qualified = node.LatencySamples, CompetitionReady(*node)
+	if !node.LastSuccess.IsZero() {
+		event.HealthAgeMs = max(0, e.now().Sub(node.LastSuccess).Milliseconds())
+	}
+	if cost := LatencyCost(*node); !math.IsInf(cost, 0) && !math.IsNaN(cost) {
+		event.Cost = cost
+	}
 	if previousNode := e.nodes[previous]; previousNode != nil {
 		event.PreviousLatency = previousNode.EWMA
+		if cost := LatencyCost(*previousNode); !math.IsInf(cost, 0) && !math.IsNaN(cost) {
+			event.PreviousCost = cost
+		}
 	}
 	e.selections = append(e.selections, event)
 	if len(e.selections) > 128 {

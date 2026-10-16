@@ -163,12 +163,7 @@ func (s *Stable) Now() string {
 func (s *Stable) Proxies() []C.Proxy {
 	ps := []C.Proxy{}
 	state := s.engine.Snapshot()
-	visible := append([]string(nil), s.preferred...)
-	visible = append(visible, state.Active...)
 	for _, node := range state.Nodes {
-		if len(s.preferred) > 0 && !containsStable(visible, node.ID) {
-			continue
-		}
 		ps = append(ps, s.byID[node.ID])
 	}
 	return ps
@@ -236,7 +231,7 @@ func (s *Stable) Snapshot() map[string]any {
 			status = "stopped"
 		}
 	}
-	return map[string]any{"group": s.Name(), "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining(), "speedPayloadReservedBytes": speedReserved, "speedPayloadHourLimitBytes": speedHourBytes}
+	return map[string]any{"group": s.Name(), "expectedExit": s.expected, "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining(), "speedPayloadReservedBytes": speedReserved, "speedPayloadHourLimitBytes": speedHourBytes, "scheduler": schedulerDiagnostics(state, time.Now())}
 }
 
 func (s *Stable) Configure(paused, powerSave bool) {
@@ -267,6 +262,7 @@ func (s *Stable) log(event, reason, id string, ok bool, latency time.Duration, s
 
 func (s *Stable) DiagnosticState() (string, stability.Snapshot) {
 	state := s.engine.Snapshot()
+	state.Scheduler = schedulerDiagnostics(state, time.Now())
 	s.mu.Lock()
 	state.Running = s.cancel != nil
 	s.mu.Unlock()
@@ -451,14 +447,23 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 			return nil, errors.New("no validated residential chain")
 		}
 	}
-	state = s.engine.Snapshot()
-	for _, id := range attempts {
+	tried := map[string]bool{}
+	for len(tried) < 3 {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if !containsStable(s.engine.Attempts(), id) {
-			continue
+		id := ""
+		for _, candidate := range s.engine.Attempts() {
+			if !tried[candidate] {
+				id = candidate
+				break
+			}
 		}
+		if id == "" {
+			break
+		}
+		tried[id] = true
+		state = s.engine.Snapshot()
 		timeout := 3 * time.Second
 		for _, node := range state.Nodes {
 			if node.ID == id {

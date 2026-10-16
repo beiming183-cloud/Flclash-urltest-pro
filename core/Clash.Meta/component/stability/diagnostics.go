@@ -211,7 +211,7 @@ func (j *Journal) Store(group string, state Snapshot) error {
 
 func validSelection(event SelectionEvent) bool {
 	kind := event.Kind == "primary" || event.Kind == "backup" || event.Kind == "removed" || event.Kind == "rejected"
-	reason := reasons[event.Reason] || event.Reason == "pool_selected" || event.Reason == "pool_replaced"
+	reason := reasons[event.Reason] || event.Reason == "pool_selected" || event.Reason == "pool_replaced" || event.Reason == "health_check_expired"
 	return kind && reason && validID(event.Node) && (event.Previous == "" || validID(event.Previous))
 }
 
@@ -390,7 +390,7 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101601", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101701", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err

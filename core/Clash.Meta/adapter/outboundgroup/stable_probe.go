@@ -67,6 +67,13 @@ func stableError(err error) (string, bool) {
 
 type stableAvailabilityKey struct{}
 
+func stableExitRequestTimeout(quick bool) time.Duration {
+	if quick {
+		return 2500 * time.Millisecond
+	}
+	return 4 * time.Second
+}
+
 func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify bool, epoch uint64, reserve func() bool) stability.Sample {
 	quick, _ := ctx.Value(stableAvailabilityKey{}).(bool)
 	sample := stability.Sample{Epoch: epoch, Phase: "delay", Service: "control"}
@@ -133,10 +140,7 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	request := func(url string) ([]byte, error) {
-		timeout := 4 * time.Second
-		if quick {
-			timeout = 1400 * time.Millisecond
-		}
+		timeout := stableExitRequestTimeout(quick)
 		requestCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, url, nil)

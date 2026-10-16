@@ -705,5 +705,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "stabilitySelectionExpired": "健康验证已过期，等待复验"
 }

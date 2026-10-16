@@ -662,5 +662,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "stabilitySelectionExpired": "正常性の確認期限切れ：再確認待ち"
 }

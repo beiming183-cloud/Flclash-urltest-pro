@@ -109,6 +109,7 @@ class SelectionLogEntry extends StatelessWidget {
       'unexpected_exit' => labels.stabilityWrongExit,
       'cert_untrusted' || 'cert_hostname' || 'cert_expired' => labels.stabilityCertificate,
       'pool_replaced' => labels.stabilitySelectionReordered,
+      'health_check_expired' => labels.stabilitySelectionExpired,
       'pool_selected' || 'promote' => labels.stabilitySelectionVerified,
       _ => labels.stabilitySelectionFailed,
     };

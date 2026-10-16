@@ -46,6 +46,30 @@ func competitionBudgetAvailable(state stability.Snapshot) bool {
 	return state.BudgetUsed < 780 && state.BudgetUsed+maintenance < 840
 }
 
+func needsStableValidation(node stability.Stats, now time.Time) bool {
+	return node.TLSAt.IsZero() || now.Sub(node.TLSAt) >= 9*time.Minute ||
+		node.ExitAt.IsZero() || now.Sub(node.ExitAt) >= 29*time.Minute
+}
+
+func schedulerDiagnostics(state stability.Snapshot, now time.Time) map[string]any {
+	counts := map[string]int{"total": len(state.Nodes), "active": len(state.Active), "identityRecheck": 0, "qualityWarming": 0, "cooling": 0, "failed": 0, "verified": 0}
+	for _, node := range state.Nodes {
+		switch {
+		case node.Quarantined || now.Before(node.CoolingUntil):
+			counts["cooling"]++
+		case node.LastError != "":
+			counts["failed"]++
+		case needsStableValidation(node, now):
+			counts["identityRecheck"]++
+		case !stability.CompetitionReady(node):
+			counts["qualityWarming"]++
+		default:
+			counts["verified"]++
+		}
+	}
+	return map[string]any{"candidates": counts, "competitionBudgetAvailable": competitionBudgetAvailable(state)}
+}
+
 func competitionCandidate(state stability.Snapshot, now time.Time, pending func(string) bool) string {
 	active := map[string]bool{}
 	worstCost := 0.0
@@ -65,7 +89,7 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 			continue
 		}
 		good := node.LastError == "" && !node.LastSuccess.IsZero() && now.Sub(node.LastSuccess) < 15*time.Minute
-		needsValidation := node.TLSAt.IsZero() || node.ExitAt.IsZero()
+		needsValidation := needsStableValidation(node, now)
 		if !needsValidation && stability.CompetitionReady(node) && now.Sub(node.LastSuccess) < 90*time.Second {
 			continue
 		}
@@ -259,7 +283,7 @@ func (s *Stable) schedule(ctx context.Context) {
 			verify := false
 			for _, node := range state.Nodes {
 				if node.ID == task {
-					verify = node.TLSAt.IsZero() || now.Sub(node.TLSAt) >= 9*time.Minute || node.ExitAt.IsZero() || now.Sub(node.ExitAt) >= 29*time.Minute
+					verify = needsStableValidation(node, now)
 				}
 			}
 			if !s.launchProbe(ctx, task, verify, containsStable(state.Active, task)) {
