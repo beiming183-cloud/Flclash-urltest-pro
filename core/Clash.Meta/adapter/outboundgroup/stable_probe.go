@@ -12,7 +12,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/mihomo/common/utils"
@@ -146,12 +148,15 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 	if quick {
 		sample.Phase, sample.Service = "exit", "bootstrap"
 	}
+	var dialTime, tlsTime atomic.Int64
 	transport := &http.Transport{DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		m := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
 		if err := m.SetRemoteAddress(address); err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		conn, err := proxy.DialContext(ctx, m)
+		dialTime.Add(int64(time.Since(started)))
 		return C.TrackProbeConn(ctx, conn), err
 	}}
 	defer transport.CloseIdleConnections()
@@ -172,6 +177,14 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		if err != nil {
 			return nil, err
 		}
+		if quick {
+			var handshake time.Time
+			trace := &httptrace.ClientTrace{
+				TLSHandshakeStart: func() { handshake = time.Now() },
+				TLSHandshakeDone:  func(_ tls.ConnectionState, _ error) { tlsTime.Add(int64(time.Since(handshake))) },
+			}
+			req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, err
@@ -188,7 +201,11 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 			sample.Phase, sample.Service = "exit", "exit"
 		}
 		sites := stableProbeSites.ordered(ctx, []string{"https://api.ipify.org", "https://www.cloudflare.com/cdn-cgi/trace"}, time.Now())
+		started := time.Now()
 		err, hard := verifyStableExitServices(expected, request, sites)
+		sample.ExitCheck = time.Since(started)
+		sample.ProbeDial = time.Duration(dialTime.Load())
+		sample.ProbeTLS = time.Duration(tlsTime.Load())
 		if err != nil {
 			sample.Error, sample.Hard = stableError(err)
 			sample.Hard = sample.Hard || hard
