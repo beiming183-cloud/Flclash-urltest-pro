@@ -1,0 +1,110 @@
+name: Publish signed FlClash Android
+on:
+  workflow_run:
+    workflows: ['FlClash 0.8.96 stability validation']
+    types: [completed]
+    branches: ['codex/latency-quality-096']
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful mobile validation run ID
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: mobile-android-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: android-release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN: ${{ github.event.workflow_run.id || inputs.run_id }}
+    steps:
+      - name: Verify build provenance and extract APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" > run.json
+          jq -e --arg repo "$GH_REPO" '
+            .repository.full_name == $repo and .head_repository.full_name == $repo and
+            .event == "push" and .head_branch == "codex/latency-quality-096" and
+            .path == ".github/workflows/stability-096.yml" and
+            .status == "completed" and .conclusion == "success"' run.json > /dev/null
+          head=$(jq -r .head_sha run.json)
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GH_REPO/contents/pubspec.yaml?ref=$head" --jq .content | base64 -d > pubspec.yaml
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN/artifacts" > artifacts.json
+          artifact=$(jq -er '[.artifacts[] | select(.name=="FlClash-0.8.96-Pro-candidate" and (.expired|not))] | select(length==1) | first' artifacts.json)
+          id=$(jq -r .id <<< "$artifact")
+          digest=$(jq -r .digest <<< "$artifact")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          gh api "repos/$GH_REPO/actions/artifacts/$id/zip" > candidate.zip
+          echo "${digest#sha256:}  candidate.zip" | sha256sum -c -
+          python3 - <<'PY'
+          import hashlib, json, re, shutil, zipfile
+          from pathlib import Path
+          name = 'FlClash-0.8.96-Pro-arm64.apk'
+          with zipfile.ZipFile('candidate.zip') as archive:
+              for member in (name, 'SOURCE_COMMIT.txt', 'SHA256SUMS.txt'):
+                  if archive.namelist().count(member) != 1:
+                      raise ValueError(f'Unexpected artifact member count for {member}')
+              if archive.read('SOURCE_COMMIT.txt').decode().strip() != json.loads(Path('run.json').read_text())['head_sha']:
+                  raise ValueError('Commit mismatch')
+              checksum, path = archive.read('SHA256SUMS.txt').decode().strip().split()
+              if Path(path).name != name:
+                  raise ValueError('Unexpected APK in checksum file')
+              with archive.open(name) as source, open('candidate.apk','wb') as output:
+                  shutil.copyfileobj(source, output)
+              with open('candidate.apk','rb') as apk:
+                  if hashlib.file_digest(apk,'sha256').hexdigest() != checksum:
+                      raise ValueError('APK checksum mismatch')
+          PY
+          version=$(sed -nE 's/^version:[[:space:]]*0\.8\.96\+([0-9]+)[[:space:]]*$/\1/p' pubspec.yaml)
+          [[ "$version" =~ ^20[0-9]{8}$ ]]
+          sdk=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$sdk/aapt2" dump badging candidate.apk > badging.txt
+          grep -F "package: name='com.beiming.flclash.urltestpro096.dev' versionCode='$version' versionName='0.8.96'" badging.txt
+          grep -E "^native-code: 'arm64-v8a'[[:space:]]*$" badging.txt
+          echo "BUILD_SHA=$head" >> "$GITHUB_ENV"
+          echo "BUILD_VERSION=$version" >> "$GITHUB_ENV"
+          echo "SDK_TOOLS=$sdk" >> "$GITHUB_ENV"
+          echo "APK=FlClash-0.8.96-LinkedAirport-$version-arm64.apk" >> "$GITHUB_ENV"
+      - name: Sign and verify the update certificate
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.FLCLASH_KEYSTORE_B64 }}
+          STORE_PASS: ${{ secrets.FLCLASH_STORE_PASS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$key"
+          "$SDK_TOOLS/apksigner" sign --ks "$key" --ks-pass env:STORE_PASS --key-pass env:STORE_PASS --out "$APK" candidate.apk
+          "$SDK_TOOLS/apksigner" verify --verbose --print-certs "$APK" > cert.txt
+          grep -Fx 'Signer #1 certificate SHA-256 digest: b63b2557ca6ee673514ece8652782154050277800bda2336a1b007237ff5e7b7' cert.txt
+          "$SDK_TOOLS/zipalign" -c -P 16 4 "$APK"
+          sha256sum "$APK" > SHA256SUMS.txt
+      - name: Publish verified APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="mobile-android-$BUILD_VERSION"
+          digest=$(sha256sum "$APK" | cut -d' ' -f1)
+          if gh release view "$tag" > /dev/null 2>&1; then
+            [[ "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha)" == "$BUILD_SHA" ]]
+            gh release download "$tag" --pattern "$APK" --pattern SHA256SUMS.txt --dir previous
+            cmp SHA256SUMS.txt previous/SHA256SUMS.txt
+            (cd previous && sha256sum -c SHA256SUMS.txt)
+            exit 0
+          fi
+          printf 'Android ARM64 · 可覆盖安装同签名的 0.8.96 测试版。\n\n构建记录 https://github.com/%s/actions/runs/%s\n\nAPK SHA-256 `%s`\n' "$GH_REPO" "$BUILD_RUN" "$digest" > notes.md
+          gh release create "$tag" "$APK" SHA256SUMS.txt --target "$BUILD_SHA" --prerelease --title "FlClash 0.8.96 · Android $BUILD_VERSION" --notes-file notes.md
