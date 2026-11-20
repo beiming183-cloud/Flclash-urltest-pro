@@ -1,5 +1,13 @@
 # FlClash URLTest Pro — 云端开发交接包
 
+## 手机端开发与发布
+
+手机端当前源码在 [codex/latency-quality-096](https://github.com/beiming183-cloud/Flclash-urltest-pro/tree/codex/latency-quality-096)。下方的开发交接说明记录的是早期基线。
+
+1. 从手机端源码分支创建工作分支。准备发布时递增 `pubspec.yaml` 中的 Android 构建号，并将 PR 的目标分支设为 `codex/latency-quality-096`。
+2. 合并后，GitHub 自动测试并构建 ARM64 APK。验证通过后，`main` 上的发布工作流使用原签名证书签名并发布到 [Releases](https://github.com/beiming183-cloud/Flclash-urltest-pro/releases)。手机或云端工作区只需仓库协作权限。
+3. 若签名或发布失败，有写权限的协作者可以打开 [Publish signed FlClash Android](https://github.com/beiming183-cloud/Flclash-urltest-pro/actions/workflows/publish-mobile.yml)，选 **Run workflow**，保留 `main`，输入已成功的**构建验证**运行编号。可在该次构建页面的网址末尾找到编号。
+
 目标：住宅出口固定，机场中继可以改变；从完整链路中选出三个稳定候选，故障时快速尝试备用，并输出体积受控的诊断日志。
 
 **状态：源码基线 + 完整开发规格 + 可运行参考模型。Android 稳定选择器、拨号重试和新日志界面尚未接入。直接编译当前 Flutter 源码得到的是上游基线，不是已经修复的客户端。**
