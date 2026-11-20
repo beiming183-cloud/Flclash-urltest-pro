@@ -231,7 +231,12 @@ func RuleProviders() map[string]P.RuleProvider {
 func UpdateProxies(newProxies map[string]C.Proxy, newProviders map[string]P.ProxyProvider) {
 	stabilityLifecycle.Lock()
 	defer stabilityLifecycle.Unlock()
-	for _, p := range AllProxies() {
+	previous := AllProxies()
+	if stabilityRunning && stabilityOnline {
+		publish := prepareStableUpdate(previous, newProxies)
+		defer publish()
+	}
+	for _, p := range previous {
 		if g, ok := p.Adapter().(stabilityGroup); ok {
 			g.Stop()
 		}
@@ -597,7 +602,7 @@ func handleTCPConn(connCtx C.ConnContext) {
 	var peekBytes []byte
 	var peekLen int
 
-	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), tcpDialTimeout(proxy, dialMetadata))
 	ctx = stability.WithBusiness(ctx, flow)
 	defer cancel()
 	remoteConn, err := retry(ctx, func(ctx context.Context) (remoteConn C.Conn, err error) {
@@ -755,6 +760,9 @@ func getRules(metadata *C.Metadata) []C.Rule {
 }
 
 func shouldStopRetry(err error) bool {
+	if errors.Is(err, stability.ErrServiceStopped) || errors.Is(err, stability.ErrEstablishmentExhausted) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
 	if errors.Is(err, resolver.ErrIPNotFound) {
 		return true
 	}

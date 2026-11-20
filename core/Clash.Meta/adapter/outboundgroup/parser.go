@@ -77,6 +77,14 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 		return NewStable(groupOption, opt, proxyMap)
 	}
 
+	var linked *relaySelection
+	if groupOption.Type == "relay-url-test" {
+		var err error
+		linked, err = parseRelaySelection(&groupOption, proxyMap)
+		if err != nil {
+			return nil, err
+		}
+	}
 	groupName := groupOption.Name
 
 	if groupOption.EmptyFallback == "" {
@@ -183,6 +191,9 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 
 		hc := provider.NewHealthCheck(ps, groupOption.URL, uint(groupOption.TestTimeout), uint(groupOption.Interval), groupOption.Lazy, expectedStatus)
 
+		if linked != nil {
+			hc.SetProbeBatch(linked.batch)
+		}
 		pd, err := provider.NewCompatibleProvider(groupName, ps, hc)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", groupName, err)
@@ -199,7 +210,11 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 		if err != nil {
 			return nil, err
 		}
-		return NewURLTest(groupOption, opt, emptyFallback, providers)
+		group, err := NewURLTest(groupOption, opt, emptyFallback, providers)
+		if err == nil && linked != nil {
+			group.linkRelays(linked)
+		}
+		return group, err
 	case "select":
 		opt := SelectorOption{}
 		err = decoder.Decode(config, &opt)

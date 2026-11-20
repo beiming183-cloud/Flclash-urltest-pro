@@ -48,41 +48,59 @@ type StableOption struct {
 }
 
 type Stable struct {
+	routeNotificationMu  sync.Mutex
+	routeNotificationKey string
 	*GroupBase
-	engine          *stability.Engine
-	journal         *stability.Journal
-	groupID         string
-	expected        string
-	byID            map[string]C.Proxy
-	byName          map[string]string
-	mu              sync.Mutex
-	cancel          context.CancelFunc
-	ctx             context.Context
-	wg              sync.WaitGroup
-	slots           chan struct{}
-	backgroundSlots chan struct{}
-	startupTried    map[string]bool
-	probing         map[string]bool
-	scheduled       map[string]bool
-	wake            chan struct{}
-	ready           chan struct{}
-	networkKey      string
-	online          bool
-	preferred       []string
-	requested       string
-	fixed           string
-	tlsChecking     bool
-	tlsChecked      map[string]time.Time
-	recheck         map[string]time.Time
-	recheckLast     map[string]time.Time
-	lastBusiness    time.Time
-	speedBusy       bool
-	speedRound      time.Time
-	speedMeasured   map[string]bool
-	speedWindow     time.Time
-	speedReserved   int64
-	transition      sync.Mutex
-	probe           func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
+	engine                *stability.Engine
+	journal               *stability.Journal
+	groupID               string
+	reloadKey             string
+	handoff               *stableHandoff
+	expected              string
+	byID                  map[string]C.Proxy
+	byName                map[string]string
+	mu                    sync.Mutex
+	cancel                context.CancelFunc
+	ctx                   context.Context
+	wg                    sync.WaitGroup
+	slots                 chan struct{}
+	backgroundSlots       chan struct{}
+	hedgeSlots            chan struct{}
+	targetFailures        map[string]targetFailure
+	recoveryNodes         map[string]recoveryNode
+	startupScheduling     bool
+	recoveryActive        bool
+	recoveryHadPrimary    bool
+	startupTried          map[string]bool
+	recoveryNext          time.Time
+	recoveryFailures      int
+	probing               map[string]bool
+	scheduled             map[string]bool
+	quickScheduled        map[string]bool
+	confirmationScheduled map[string]bool
+	wake                  chan struct{}
+	ready                 chan struct{}
+	networkKey            string
+	online                bool
+	preferred             []string
+	requested             string
+	fixed                 string
+	tlsChecking           bool
+	tlsChecked            map[string]time.Time
+	recheck               map[string]time.Time
+	recheckLast           map[string]time.Time
+	lastBusiness          time.Time
+	speedBusy             bool
+	speedRound            time.Time
+	speedMeasured         map[string]bool
+	speedWindow           time.Time
+	speedReserved         int64
+	transition            sync.Mutex
+	probe                 func(context.Context, C.Proxy, string, bool, uint64, func() bool) stability.Sample
+	probeTraffic          C.ProbeTraffic
+	probeWindow           time.Time
+	probeWindowSent       int64
+	probeWindowReceived   int64
 }
 
 func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C.Proxy) (*Stable, error) {
@@ -103,7 +121,7 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	if len(endpoints) == 0 {
 		return nil, errors.New("stable-failover requires residential-endpoints")
 	}
-	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 4), backgroundSlots: make(chan struct{}, 2), startupTried: map[string]bool{}, probing: map[string]bool{}, probe: probeStable}
+	s := &Stable{GroupBase: NewGroupBase(GroupBaseOption{Name: option.Name, Type: C.StableFailover, Hidden: option.Hidden, Icon: option.Icon}), journal: j, groupID: j.ID("group:" + option.Name), expected: opt.ExpectedExit, byID: map[string]C.Proxy{}, byName: map[string]string{}, slots: make(chan struct{}, 8), backgroundSlots: make(chan struct{}, 2), hedgeSlots: make(chan struct{}, 2), startupTried: map[string]bool{}, probing: map[string]bool{}, probe: probeStable}
 	candidates := []stability.Candidate{}
 	account := ""
 	for _, name := range option.Proxies {
@@ -131,10 +149,11 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 		if airport == "" {
 			airport = info.Relay
 		}
-		candidates = append(candidates, stability.Candidate{ID: id, Relay: j.ID(info.Relay), Airport: j.ID(airport)})
+		candidates = append(candidates, stability.Candidate{ID: id, Relay: j.ID(stableRelayFailureDomain(info.Relay, relay.Addr())), Airport: j.ID(airport)})
 		s.byID[id] = p
 		s.byName[name] = id
 	}
+	s.reloadKey = stableBinding(j, option.Name, opt.ExpectedExit, account, endpoints)
 	s.engine, err = stability.New(candidates, nil)
 	for _, name := range opt.Preferred {
 		if s.byName[name] == "" {
@@ -149,6 +168,17 @@ func NewStable(option GroupCommonOption, opt StableOption, proxyMap map[string]C
 	s.speedMeasured = map[string]bool{}
 	if err == nil {
 		s.engine.Restore(j.Statistics(s.groupID))
+		s.engine.SetSelectionObserver(func(event stability.SelectionEvent, epoch, generation uint64) {
+			if event.Kind == "empty_enter" || event.Kind == "empty_exit" {
+				_ = j.Record(stability.Event{Event: event.Kind, Reason: event.Reason, Group: s.groupID, Node: event.Node, Epoch: epoch, Generation: generation, OK: event.Kind == "empty_exit"})
+			}
+			if event.Kind == "primary" && event.Node != event.Previous {
+				_ = j.Record(stability.Event{Event: "primary_changed", Reason: event.Reason, Group: s.groupID, Node: event.Node, Previous: event.Previous, Epoch: epoch, Generation: generation, OK: true})
+			}
+		})
+	}
+	if err == nil {
+		stableCoordinationEnabled.Store(true)
 	}
 	return s, err
 }
@@ -181,7 +211,7 @@ func (s *Stable) Set(name string) error {
 		s.requested, s.fixed = "", ""
 		s.engine.ClearManual()
 		s.mu.Unlock()
-		OnStableRouteChange()
+		s.notifyRouteChange()
 		return nil
 	}
 	id := s.byName[name]
@@ -196,25 +226,32 @@ func (s *Stable) Set(name string) error {
 		case s.wake <- struct{}{}:
 		default:
 		}
-		OnStableRouteChange()
+		s.notifyRouteChange()
 		return nil
 	}
 	s.fixed, s.requested = name, ""
 	s.mu.Unlock()
-	OnStableRouteChange()
+	s.notifyRouteChange()
 	return nil
 }
 func (s *Stable) ForceSet(name string) { _ = s.Set(name) }
 
-func (s *Stable) Snapshot() map[string]any {
+func (s *Stable) snapshot() map[string]any {
 	state := s.engine.Snapshot()
 	s.mu.Lock()
 	state.Running = s.cancel != nil
 	inFlight := len(s.probing)
 	pending := s.requested
 	speedReserved := s.speedReserved
+	recoveryWait := time.Until(s.recoveryNext).Milliseconds()
+	if recoveryWait < 0 {
+		recoveryWait = 0
+	}
+	recoveryFailures := s.recoveryFailures
+	searchTried := len(s.startupTried)
 	s.mu.Unlock()
 	names := map[string]string{}
+	s.journal.ObserveMinute(s.groupID, state)
 	for id, p := range s.byID {
 		names[id] = p.Name()
 	}
@@ -231,12 +268,12 @@ func (s *Stable) Snapshot() map[string]any {
 			status = "stopped"
 		}
 	}
-	return map[string]any{"group": s.Name(), "expectedExit": s.expected, "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining(), "speedPayloadReservedBytes": speedReserved, "speedPayloadHourLimitBytes": speedHourBytes, "scheduler": schedulerDiagnostics(state, time.Now())}
+	return map[string]any{"group": s.Name(), "expectedExit": s.expected, "state": state, "names": names, "status": status, "pending": pending, "inFlight": inFlight, "debugRemainingSec": s.journal.DebugRemaining(), "speedPayloadReservedBytes": speedReserved, "speedPayloadHourLimitBytes": speedHourBytes, "scheduler": schedulerDiagnostics(state, time.Now()), "recoveryBackoffMs": recoveryWait, "recoveryFailureCount": recoveryFailures, "availabilitySearch": map[string]any{"active": len(state.Active) == 0 && state.Running, "tried": searchTried, "total": len(state.Nodes), "parallelLimit": 8, "firstPassDeadlineMs": stableSearchTimeout.Milliseconds()}}
 }
 
 func (s *Stable) Configure(paused, powerSave bool) {
 	s.engine.Configure(paused, powerSave)
-	OnStableRouteChange()
+	s.notifyRouteChange()
 }
 
 func (s *Stable) MarshalJSON() ([]byte, error) {
@@ -262,10 +299,10 @@ func (s *Stable) log(event, reason, id string, ok bool, latency time.Duration, s
 
 func (s *Stable) DiagnosticState() (string, stability.Snapshot) {
 	state := s.engine.Snapshot()
-	state.Scheduler = schedulerDiagnostics(state, time.Now())
 	s.mu.Lock()
 	state.Running = s.cancel != nil
 	s.mu.Unlock()
+	state.Scheduler = schedulerDiagnostics(state, time.Now())
 	return s.groupID, state
 }
 
@@ -277,10 +314,17 @@ func (s *Stable) Start() {
 	if s.cancel != nil {
 		return
 	}
+	ordinaryRecoveryStart.Store(time.Now().UnixNano())
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	ctx := s.ctx
 	s.engine.Invalidate()
 	s.startupTried = map[string]bool{}
+	s.recoveryNext = time.Time{}
+	s.recoveryFailures = 0
+	s.recoveryActive = false
+	s.recoveryHadPrimary = false
+	s.recoveryNodes = map[string]recoveryNode{}
+	s.targetFailures = map[string]targetFailure{}
 	s.tlsChecked = map[string]time.Time{}
 	s.recheck, s.recheckLast = map[string]time.Time{}, map[string]time.Time{}
 	if s.fixed != "" {
@@ -320,13 +364,18 @@ func (s *Stable) NetworkChanged(key string, online bool) {
 	if unchanged {
 		return
 	}
+	if online {
+		ready := make(chan struct{})
+		release := s.armHandoff(s, ready)
+		defer func() { close(ready); release() }()
+	}
 	s.Stop()
 	s.engine.SwitchNetwork(s.journal.ID("network:" + key))
 	if online {
 		s.Start()
 	}
 	s.log("network_changed", "network_changed", "", false, 0)
-	OnStableRouteChange()
+	s.notifyRouteChange()
 }
 
 func (s *Stable) Probe(ctx context.Context, id string, verify, elect bool) (stability.Sample, error) {
@@ -357,14 +406,25 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	defer cancel()
 	stop := context.AfterFunc(owner, cancel)
 	defer stop()
-	if !quick {
-		select {
-		case s.backgroundSlots <- struct{}{}:
-			defer func() { <-s.backgroundSlots }()
-		case <-ctx.Done():
-			return stability.Sample{}, ctx.Err()
-		}
+	class := 2
+	queuedState := s.engine.Snapshot()
+	_, _, queuedPriority, _ := stableProbePolicy(queuedState, id, verify, quick, fault)
+	if queuedPriority == stability.MaintenanceProbe {
+		class = 0
+	} else if queuedPriority == stability.RecoveryProbe {
+		class = 1
 	}
+	if search, _ := ctx.Value(stableSearchKey{}).(bool); search {
+		class = 2
+	}
+	if quality, _ := ctx.Value(stableQualityKey{}).(bool); quality {
+		class = 2
+	}
+	releaseDispatch, dispatchErr := stableBackgroundDispatch.acquire(ctx, s.groupID, class, cancel, len(queuedState.Active) == 0)
+	if dispatchErr != nil {
+		return stability.Sample{Error: "cancelled"}, dispatchErr
+	}
+	defer releaseDispatch()
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -372,10 +432,18 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 		return stability.Sample{}, ctx.Err()
 	}
 	state := s.engine.Snapshot()
-	timeout := 5 * time.Second
+	verify, quick, priority, credits := stableProbePolicy(state, id, verify, quick, fault)
+	if quality, _ := ctx.Value(stableQualityKey{}).(bool); quality {
+		priority = ""
+	}
+	search, _ := ctx.Value(stableSearchKey{}).(bool)
+	if search {
+		priority = stability.SearchProbe
+	}
+	timeout := 9 * time.Second
 	for _, node := range state.Nodes {
 		if node.ID == id && node.Failures > 0 {
-			timeout = 5 * time.Second
+			timeout = 9 * time.Second
 		}
 	}
 	if verify {
@@ -385,18 +453,51 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 		}
 	}
 	if quick {
-		timeout = 3 * time.Second
+		timeout = stableAvailabilityTimeout()
 		ctx = context.WithValue(ctx, stableAvailabilityKey{}, true)
+	}
+	if search {
+		timeout = stableSearchTimeout
 	}
 	ctx, cancelProbe := context.WithTimeout(ctx, timeout)
 	defer cancelProbe()
 	probeStarted := time.Now()
-	sample := s.probe(ctx, p, s.expected, verify, state.Epoch, func() bool { return s.engine.Reserve(fault) })
-	if owner.Err() != nil || sample.Error == "cancelled" {
+	reserve := func() bool { return s.engine.Reserve(false) }
+	var sample stability.Sample
+	if scheduled, ok := ctx.Value(stableProbeLeaseKey{}).(func() bool); ok {
+		reserve = scheduled
+	} else if priority != "" {
+		consume, release, ok := s.engine.LeaseProbe(priority, credits)
+		if ok {
+			defer release()
+			reserve = consume
+		} else {
+			sample = stability.Sample{Epoch: state.Epoch, Error: "budget_exhausted"}
+		}
+	}
+	if sample.Error == "" {
+		ctx = C.WithProbeAccounting(ctx, &s.probeTraffic, reserve)
+		for _, node := range state.Nodes {
+			if node.ID == id {
+				ctx = context.WithValue(ctx, stableProbeRouteKey{}, stableProbeRoute{network: state.NetworkKey, relay: node.Relay})
+				break
+			}
+		}
+		sample = s.probe(ctx, p, s.expected, verify, state.Epoch, reserve)
+	}
+	// A short search deadline means "not yet verified", not proof of a bad
+	// route. Retain it for the slower, independent recovery pass.
+	searchTimeout := ctx.Err() == context.DeadlineExceeded || sample.Error == "exit_query_timeout" || sample.Error == "https_timeout" || sample.Error == "relay_dial_timeout"
+	if search && !sample.OK && searchTimeout && !sample.Hard {
+		s.log("probe", "search_deferred", id, false, 0)
+		return stability.Sample{Epoch: state.Epoch, Error: "cancelled"}, context.Canceled
+	}
+	if owner.Err() != nil || ctx.Err() == context.Canceled || sample.Error == "cancelled" {
 		return sample, context.Canceled
 	}
 	if sample.Error == "budget_exhausted" {
-		s.log("budget_exhausted", "budget_exhausted", id, false, 0)
+		b := s.engine.Snapshot().ProbeBudgets[priority]
+		_ = s.journal.Record(stability.Event{Event: "budget_exhausted", Reason: "budget_exhausted", Group: s.groupID, Node: id, Epoch: state.Epoch, ProbeClass: string(priority), Tokens: b.Tokens})
 		return sample, errors.New("probe budget exhausted")
 	}
 	if !sample.OK {
@@ -415,31 +516,87 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	}
 	s.log("probe", sample.Error, id, sample.OK, sample.Latency, sample)
 	if elect && s.engine.Snapshot().Generation != state.Generation {
-		s.log("switch", s.engine.Snapshot().Reason, s.engine.Snapshot().Primary, true, 0)
-		OnStableRouteChange()
+		s.notifyRouteChange()
 	}
 	return sample, nil
 }
 
-func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (conn C.Conn, resultErr error) {
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	active := s
+	defer func() {
+		reason := ""
+		if resultErr != nil {
+			reason, _ = stableError(resultErr)
+		}
+		deadline, _ := ctx.Deadline()
+		remaining := int64(0)
+		if !deadline.IsZero() {
+			remaining = max(0, time.Until(deadline).Milliseconds())
+		}
+		_ = s.journal.Record(stability.Event{Event: "dial_final", Reason: reason, Group: active.groupID, Epoch: active.engine.Snapshot().Epoch, OK: resultErr == nil, DialMs: time.Since(started).Milliseconds(), Target: s.journal.ID(metadata.RemoteAddress()), Service: targetService(metadata.RemoteAddress()), RemainingMs: remaining})
+	}()
+	conn, resultErr = s.dialCurrent(ctx, metadata)
+	var move *stableHandoff
+	if !errors.As(resultErr, &move) {
+		return
+	}
+	defer func() { move.recordOutcome(resultErr) }()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-move.ready:
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	active = move.next
+	return active.dialCurrent(ctx, metadata)
+}
+
+func (s *Stable) dialCurrent(parent context.Context, metadata *C.Metadata) (conn C.Conn, resultErr error) {
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	if s.cancel == nil {
+		err := s.inactiveErrorLocked()
 		s.mu.Unlock()
-		return nil, errors.New("stability service stopped")
+		return nil, err
 	}
 	owner := s.ctx
 	s.lastBusiness = time.Now()
 	s.wg.Add(1)
 	s.mu.Unlock()
 	defer s.wg.Done()
-	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer func() {
+		if resultErr == nil {
+			return
+		}
+		if err := parent.Err(); err != nil {
+			if !errors.Is(resultErr, err) {
+				resultErr = err
+			}
+			return
+		}
+		if owner.Err() != nil {
+			s.mu.Lock()
+			resultErr = s.inactiveErrorLocked()
+			s.mu.Unlock()
+		}
+	}()
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stop := context.AfterFunc(owner, cancel)
 	defer stop()
-	state := s.engine.Snapshot()
 	attempts := s.engine.Attempts()
 	if len(attempts) == 0 {
 		if err := s.awaitStartup(ctx, owner); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, errors.Join(errors.New("qualification_wait_timeout"), err)
+			}
 			return nil, err
 		}
 		attempts = s.engine.Attempts()
@@ -447,69 +604,7 @@ func (s *Stable) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 			return nil, errors.New("no validated residential chain")
 		}
 	}
-	tried := map[string]bool{}
-	for len(tried) < 3 {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		id := ""
-		for _, candidate := range s.engine.Attempts() {
-			if !tried[candidate] {
-				id = candidate
-				break
-			}
-		}
-		if id == "" {
-			break
-		}
-		tried[id] = true
-		state = s.engine.Snapshot()
-		timeout := 3 * time.Second
-		for _, node := range state.Nodes {
-			if node.ID == id {
-				timeout = stability.ConnectionTimeout(node, time.Now())
-			}
-		}
-		attempt, release := context.WithTimeout(ctx, timeout)
-		copyMeta := *metadata
-		flow := stability.BusinessFromContext(ctx)
-		flow.DialAttempt(stability.BusinessRoute{Group: s.groupID, Node: id, Protocol: s.byID[id].Type().String(), Epoch: state.Epoch, Generation: state.Generation}, s.byID[id].Name())
-		started := time.Now()
-		conn, err := s.byID[id].DialContext(attempt, &copyMeta)
-		observedError := err
-		if conn == nil && observedError == nil {
-			observedError = errors.New("empty connection")
-		}
-		flow.DialResult(observedError, time.Since(started))
-		release()
-		if err == nil && conn != nil {
-			s.engine.ObserveDial(id, state.Epoch, time.Since(started))
-			if ctx.Err() != nil || !s.engine.PromoteDial(id, state.Epoch) {
-				conn.Close()
-				return nil, errors.New("stale residential establishment")
-			}
-			conn.AppendToChains(s)
-			if state.Primary != id {
-				s.log("switch", "dial_failover", id, true, 0)
-				OnStableRouteChange()
-			}
-			return conn, nil
-		}
-		if conn != nil {
-			conn.Close()
-		}
-		if err == nil {
-			err = errors.New("empty connection")
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		reason, hard := stableError(err)
-		s.engine.Record(id, stability.Sample{Epoch: state.Epoch, Error: reason, Hard: hard, FailureWait: time.Since(started)}, true)
-		s.log("probe", reason, id, false, 0)
-		OnStableRouteChange()
-	}
-	return nil, errors.New("no available residential chain")
+	return s.establish(ctx, metadata)
 }
 
 func containsStable(ids []string, id string) bool {

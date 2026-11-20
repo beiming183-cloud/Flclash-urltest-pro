@@ -17,6 +17,12 @@ func TestStableLowLatencyChallengerBeatsFrequentlyMeasuredSlowPrimary(t *testing
 		e.Record("fast", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Duration(ms) * time.Millisecond}, true)
 		now = now.Add(5 * time.Second)
 	}
+	for i := 0; i < 24; i++ {
+		now = now.Add(5 * time.Second)
+		e.Record("slow", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 450 * time.Millisecond}, true)
+		e.Record("fast", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 210 * time.Millisecond}, true)
+	}
+
 	if got := e.Snapshot().Primary; got != "fast" {
 		t.Fatalf("Stable 200ms challenger lost to 400-500ms incumbent purely due to sampling advantage: %s", got)
 	}
@@ -38,6 +44,16 @@ func TestStableLowJitterBeatsOccasionallyFastSpikes(t *testing.T) {
 		e.Record("steady", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Duration(ms) * time.Millisecond}, true)
 		now = now.Add(5 * time.Second)
 	}
+	for i := 0; i < 24; i++ {
+		now = now.Add(5 * time.Second)
+		ms := 180
+		if i%4 == 0 {
+			ms = 850
+		}
+		e.Record("spiky", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: time.Duration(ms) * time.Millisecond}, true)
+		e.Record("steady", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 250 * time.Millisecond}, true)
+	}
+
 	if got := e.Snapshot().Primary; got != "steady" {
 		t.Fatalf("Consistent 250ms challenger lost to frequently spiking 180ms node: %s", got)
 	}

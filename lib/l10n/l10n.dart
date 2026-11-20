@@ -4523,6 +4523,631 @@ class AppLocalizations {
       args: [count],
     );
   }
+
+  /// `Residential stability`
+  String get stabilityTitle {
+    return Intl.message(
+      'Residential stability',
+      name: 'stabilityTitle',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Export diagnostics`
+  String get stabilityExport {
+    return Intl.message(
+      'Export diagnostics',
+      name: 'stabilityExport',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Connected`
+  String get stabilityReady {
+    return Intl.message(
+      'Connected',
+      name: 'stabilityReady',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `VPN stopped`
+  String get stabilityStopped {
+    return Intl.message(
+      'VPN stopped',
+      name: 'stabilityStopped',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Exit IP does not match`
+  String get stabilityWrongExit {
+    return Intl.message(
+      'Exit IP does not match',
+      name: 'stabilityWrongExit',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Exit verification timed out`
+  String get stabilityExitTimeout {
+    return Intl.message(
+      'Exit verification timed out',
+      name: 'stabilityExitTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Certificate verification failed`
+  String get stabilityCertificate {
+    return Intl.message(
+      'Certificate verification failed',
+      name: 'stabilityCertificate',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `TLS handshake failed`
+  String get stabilityTlsTimeout {
+    return Intl.message(
+      'TLS handshake failed',
+      name: 'stabilityTlsTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Chain check timed out`
+  String get stabilityDelayTimeout {
+    return Intl.message(
+      'Chain check timed out',
+      name: 'stabilityDelayTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Residential connection rejected`
+  String get stabilityAuthentication {
+    return Intl.message(
+      'Residential connection rejected',
+      name: 'stabilityAuthentication',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Waiting for check budget`
+  String get stabilityBudget {
+    return Intl.message(
+      'Waiting for check budget',
+      name: 'stabilityBudget',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Verifying chain`
+  String get stabilityValidating {
+    return Intl.message(
+      'Verifying chain',
+      name: 'stabilityValidating',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Unable to read stability status`
+  String get stabilityUnavailable {
+    return Intl.message(
+      'Unable to read stability status',
+      name: 'stabilityUnavailable',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Request latency is measured after connection setup; first response and exit checks are shown separately.`
+  String get stabilityMeasurement {
+    return Intl.message(
+      'Request latency is measured after connection setup; first response and exit checks are shown separately.',
+      name: 'stabilityMeasurement',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Automatic failover`
+  String get stabilityAutomatic {
+    return Intl.message(
+      'Automatic failover',
+      name: 'stabilityAutomatic',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Less frequent background checks`
+  String get stabilityPowerSave {
+    return Intl.message(
+      'Less frequent background checks',
+      name: 'stabilityPowerSave',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Primary`
+  String get stabilityPrimary {
+    return Intl.message(
+      'Primary',
+      name: 'stabilityPrimary',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Backup`
+  String get stabilityBackup {
+    return Intl.message('Backup', name: 'stabilityBackup', desc: '', args: []);
+  }
+
+  /// `Exit verified`
+  String get stabilityVerified {
+    return Intl.message(
+      'Exit verified',
+      name: 'stabilityVerified',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Verifying a usable primary and backups.`
+  String get stabilityWaiting {
+    return Intl.message(
+      'Verifying a usable primary and backups.',
+      name: 'stabilityWaiting',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Mark fault and record for 10 minutes`
+  String get stabilityMark {
+    return Intl.message(
+      'Mark fault and record for 10 minutes',
+      name: 'stabilityMark',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `No stability group. Ordinary proxy groups keep their original behavior.`
+  String get stabilityNoGroup {
+    return Intl.message(
+      'No stability group. Ordinary proxy groups keep their original behavior.',
+      name: 'stabilityNoGroup',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Checked {seconds}s ago`
+  String stabilityAge(int seconds) {
+    return Intl.message(
+      'Checked ${seconds}s ago',
+      name: 'stabilityAge',
+      desc: '',
+      args: [seconds],
+    );
+  }
+
+  /// `Detailed logging: {seconds}s remaining`
+  String stabilityDebug(int seconds) {
+    return Intl.message(
+      'Detailed logging: ${seconds}s remaining',
+      name: 'stabilityDebug',
+      desc: '',
+      args: [seconds],
+    );
+  }
+
+  /// `Wrong exit`
+  String get stabilityExitShort {
+    return Intl.message(
+      'Wrong exit',
+      name: 'stabilityExitShort',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Certificate error`
+  String get stabilityCertificateShort {
+    return Intl.message(
+      'Certificate error',
+      name: 'stabilityCertificateShort',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Stopped`
+  String get stabilityStoppedShort {
+    return Intl.message(
+      'Stopped',
+      name: 'stabilityStoppedShort',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Verifying`
+  String get stabilityValidatingShort {
+    return Intl.message(
+      'Verifying',
+      name: 'stabilityValidatingShort',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Check failed`
+  String get stabilityFailureShort {
+    return Intl.message(
+      'Check failed',
+      name: 'stabilityFailureShort',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Stable choice`
+  String get stabilityType {
+    return Intl.message(
+      'Stable choice',
+      name: 'stabilityType',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Website tests`
+  String get websiteTests {
+    return Intl.message(
+      'Website tests',
+      name: 'websiteTests',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Current Clash route · HTTPS response time`
+  String get websiteTestCurrentRoute {
+    return Intl.message(
+      'Current Clash route · HTTPS response time',
+      name: 'websiteTestCurrentRoute',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Test`
+  String get websiteTest {
+    return Intl.message('Test', name: 'websiteTest', desc: '', args: []);
+  }
+
+  /// `Test all`
+  String get websiteTestAll {
+    return Intl.message('Test all', name: 'websiteTestAll', desc: '', args: []);
+  }
+
+  /// `Add website`
+  String get websiteTestAdd {
+    return Intl.message(
+      'Add website',
+      name: 'websiteTestAdd',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `HTTPS URL`
+  String get websiteTestUrl {
+    return Intl.message(
+      'HTTPS URL',
+      name: 'websiteTestUrl',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Enter a valid HTTPS URL`
+  String get websiteTestInvalidUrl {
+    return Intl.message(
+      'Enter a valid HTTPS URL',
+      name: 'websiteTestInvalidUrl',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Connect first`
+  String get websiteTestOffline {
+    return Intl.message(
+      'Connect first',
+      name: 'websiteTestOffline',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Failed`
+  String get websiteTestFailed {
+    return Intl.message(
+      'Failed',
+      name: 'websiteTestFailed',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `{delay} ms request latency · {jitter} ms variation`
+  String stabilityRequestLatency(int delay, int jitter) {
+    return Intl.message(
+      '$delay ms request latency · $jitter ms variation',
+      name: 'stabilityRequestLatency',
+      desc: '',
+      args: [delay, jitter],
+    );
+  }
+
+  /// `First response (incl. setup) {delay} ms · P95 {p95} ms`
+  String stabilityFirstResponse(int delay, int p95) {
+    return Intl.message(
+      'First response (incl. setup) $delay ms · P95 $p95 ms',
+      name: 'stabilityFirstResponse',
+      desc: '',
+      args: [delay, p95],
+    );
+  }
+
+  /// `First response (incl. setup): awaiting measurement`
+  String get stabilityFirstResponseUnknown {
+    return Intl.message(
+      'First response (incl. setup): awaiting measurement',
+      name: 'stabilityFirstResponseUnknown',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Candidate selection log`
+  String get stabilitySelectionLog {
+    return Intl.message(
+      'Candidate selection log',
+      name: 'stabilitySelectionLog',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Recent 128 selections and exclusions · newest first`
+  String get stabilitySelectionLogDescription {
+    return Intl.message(
+      'Recent 128 selections and exclusions · newest first',
+      name: 'stabilitySelectionLogDescription',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `No selections yet. Connect and wait for candidate checks.`
+  String get stabilitySelectionLogEmpty {
+    return Intl.message(
+      'No selections yet. Connect and wait for candidate checks.',
+      name: 'stabilitySelectionLogEmpty',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Unknown node`
+  String get stabilitySelectionUnknownNode {
+    return Intl.message(
+      'Unknown node',
+      name: 'stabilitySelectionUnknownNode',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Primary selected · {node}`
+  String stabilitySelectionPrimary(String node) {
+    return Intl.message(
+      'Primary selected · $node',
+      name: 'stabilitySelectionPrimary',
+      desc: '',
+      args: [node],
+    );
+  }
+
+  /// `Primary switched · {previous} → {node}`
+  String stabilitySelectionSwitch(String previous, String node) {
+    return Intl.message(
+      'Primary switched · $previous → $node',
+      name: 'stabilitySelectionSwitch',
+      desc: '',
+      args: [previous, node],
+    );
+  }
+
+  /// `Backup added · {node}`
+  String stabilitySelectionBackup(String node) {
+    return Intl.message(
+      'Backup added · $node',
+      name: 'stabilitySelectionBackup',
+      desc: '',
+      args: [node],
+    );
+  }
+
+  /// `Candidate removed · {node}`
+  String stabilitySelectionRemoved(String node) {
+    return Intl.message(
+      'Candidate removed · $node',
+      name: 'stabilitySelectionRemoved',
+      desc: '',
+      args: [node],
+    );
+  }
+
+  /// `Not selected · {node}`
+  String stabilitySelectionRejected(String node) {
+    return Intl.message(
+      'Not selected · $node',
+      name: 'stabilitySelectionRejected',
+      desc: '',
+      args: [node],
+    );
+  }
+
+  /// `Better low-latency stability score`
+  String get stabilitySelectionBetter {
+    return Intl.message(
+      'Better low-latency stability score',
+      name: 'stabilitySelectionBetter',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Manually selected`
+  String get stabilitySelectionManual {
+    return Intl.message(
+      'Manually selected',
+      name: 'stabilitySelectionManual',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Previous connection failed; switched to a verified candidate`
+  String get stabilitySelectionFailover {
+    return Intl.message(
+      'Previous connection failed; switched to a verified candidate',
+      name: 'stabilitySelectionFailover',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Connection or verification timed out`
+  String get stabilitySelectionTimeout {
+    return Intl.message(
+      'Connection or verification timed out',
+      name: 'stabilitySelectionTimeout',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Candidate pool reordered`
+  String get stabilitySelectionReordered {
+    return Intl.message(
+      'Candidate pool reordered',
+      name: 'stabilitySelectionReordered',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Chain and exit verification passed`
+  String get stabilitySelectionVerified {
+    return Intl.message(
+      'Chain and exit verification passed',
+      name: 'stabilitySelectionVerified',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Verification failed; candidate excluded`
+  String get stabilitySelectionFailed {
+    return Intl.message(
+      'Verification failed; candidate excluded',
+      name: 'stabilitySelectionFailed',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included.`
+  String get stabilityConnectionLogging {
+    return Intl.message(
+      'ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included.',
+      name: 'stabilityConnectionLogging',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Short download {speed} Mbps · loaded latency {delay} ms`
+  String stabilityThroughput(String speed, int delay) {
+    return Intl.message(
+      'Short download $speed Mbps · loaded latency $delay ms',
+      name: 'stabilityThroughput',
+      desc: '',
+      args: [speed, delay],
+    );
+  }
+
+  /// `Short download reference {speed} Mbps · excluded from ranking`
+  String stabilityThroughputReference(String speed) {
+    return Intl.message(
+      'Short download reference $speed Mbps · excluded from ranking',
+      name: 'stabilityThroughputReference',
+      desc: '',
+      args: [speed],
+    );
+  }
+
+  /// `Available · gathering stability evidence`
+  String get stabilityProbation {
+    return Intl.message(
+      'Available · gathering stability evidence',
+      name: 'stabilityProbation',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Similar latency, stronger measured download speed`
+  String get stabilitySelectionThroughput {
+    return Intl.message(
+      'Similar latency, stronger measured download speed',
+      name: 'stabilitySelectionThroughput',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Health verification expired; waiting for recheck`
+  String get stabilitySelectionExpired {
+    return Intl.message(
+      'Health verification expired; waiting for recheck',
+      name: 'stabilitySelectionExpired',
+      desc: '',
+      args: [],
+    );
+  }
 }
 
 class AppLocalizationDelegate extends LocalizationsDelegate<AppLocalizations> {

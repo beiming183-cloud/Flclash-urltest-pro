@@ -69,9 +69,28 @@ class MessageLookup extends MessageLookupByLibrary {
 
   static String m23(count) => "${count} 項目が選択されています";
 
-  static String m24(label) => "${label}はURLである必要があります";
+  static String m26(delay, p95) => "初回応答（接続込み）${delay} ms · P95 ${p95} ms";
 
-  static String m25(count) => "${count}年前";
+  static String m27(delay, jitter) => "リクエスト遅延 ${delay} ms · 変動 ${jitter} ms";
+
+  static String m28(node) => "予備に追加 · ${node}";
+
+  static String m29(node) => "主回線に選択 · ${node}";
+
+  static String m30(node) => "選択せず · ${node}";
+
+  static String m31(node) => "候補から除外 · ${node}";
+
+  static String m32(previous, node) => "主回線を切替 · ${previous} → ${node}";
+
+  static String m33(speed, delay) =>
+      "小容量ダウンロード ${speed} Mbps · 負荷時遅延 ${delay} ms";
+
+  static String m34(speed) => "短時間の参考値 ${speed} Mbps · 順位には不使用";
+
+  static String m35(label) => "${label}はURLである必要があります";
+
+  static String m36(count) => "${count}年前";
 
   final messages = _notInlinedMessages(_notInlinedMessages);
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
@@ -779,6 +798,62 @@ class MessageLookup extends MessageLookupByLibrary {
       "分流戦略は空にできません",
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs is empty"),
+    "stabilityConnectionLogging": MessageLookupByLibrary.simpleMessage(
+      "ChatGPT の接続を自動記録します。エラー後すぐに診断をエクスポートしてください。時系列ログを含みます。",
+    ),
+    "stabilityFirstResponse": m26,
+    "stabilityFirstResponseUnknown": MessageLookupByLibrary.simpleMessage(
+      "初回応答（接続込み）：測定待ち",
+    ),
+    "stabilityMeasurement": MessageLookupByLibrary.simpleMessage(
+      "接続後のリクエスト遅延を測定し、初回応答と出口確認を別に表示します。",
+    ),
+    "stabilityProbation": MessageLookupByLibrary.simpleMessage(
+      "接続可能 · 安定性のサンプルを収集中",
+    ),
+    "stabilityRequestLatency": m27,
+    "stabilitySelectionBackup": m28,
+    "stabilitySelectionBetter": MessageLookupByLibrary.simpleMessage(
+      "低遅延と安定性のスコアが改善",
+    ),
+    "stabilitySelectionExpired": MessageLookupByLibrary.simpleMessage(
+      "正常性の確認期限切れ：再確認待ち",
+    ),
+    "stabilitySelectionFailed": MessageLookupByLibrary.simpleMessage(
+      "確認に失敗し、一時的に除外",
+    ),
+    "stabilitySelectionFailover": MessageLookupByLibrary.simpleMessage(
+      "前の接続が失敗し、確認済みの候補へ切替",
+    ),
+    "stabilitySelectionLog": MessageLookupByLibrary.simpleMessage("候補選択ログ"),
+    "stabilitySelectionLogDescription": MessageLookupByLibrary.simpleMessage(
+      "直近128件の選択と除外 · 新しい順",
+    ),
+    "stabilitySelectionLogEmpty": MessageLookupByLibrary.simpleMessage(
+      "選択記録はまだありません。接続して候補の確認を待ってください。",
+    ),
+    "stabilitySelectionManual": MessageLookupByLibrary.simpleMessage("手動で選択"),
+    "stabilitySelectionPrimary": m29,
+    "stabilitySelectionRejected": m30,
+    "stabilitySelectionRemoved": m31,
+    "stabilitySelectionReordered": MessageLookupByLibrary.simpleMessage(
+      "候補プールを再順位付け",
+    ),
+    "stabilitySelectionSwitch": m32,
+    "stabilitySelectionThroughput": MessageLookupByLibrary.simpleMessage(
+      "同程度の遅延で実測ダウンロードが高速",
+    ),
+    "stabilitySelectionTimeout": MessageLookupByLibrary.simpleMessage(
+      "接続または確認がタイムアウト",
+    ),
+    "stabilitySelectionUnknownNode": MessageLookupByLibrary.simpleMessage(
+      "不明なノード",
+    ),
+    "stabilitySelectionVerified": MessageLookupByLibrary.simpleMessage(
+      "回線と出口の確認に合格",
+    ),
+    "stabilityThroughput": m33,
+    "stabilityThroughputReference": m34,
     "stackMode": MessageLookupByLibrary.simpleMessage("スタックモード"),
     "standard": MessageLookupByLibrary.simpleMessage("標準"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
@@ -842,7 +917,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "upload": MessageLookupByLibrary.simpleMessage("アップロード"),
     "url": MessageLookupByLibrary.simpleMessage("URL"),
     "urlDesc": MessageLookupByLibrary.simpleMessage("URL経由でプロファイルを取得"),
-    "urlTip": m24,
+    "urlTip": m35,
     "useHosts": MessageLookupByLibrary.simpleMessage("ホストを使用"),
     "useSystemHosts": MessageLookupByLibrary.simpleMessage("システムホストを使用"),
     "userAgent": MessageLookupByLibrary.simpleMessage("ユーザーエージェント"),
@@ -857,8 +932,21 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "vpnTip": MessageLookupByLibrary.simpleMessage("変更はVPN再起動後に有効"),
     "webDAVConfiguration": MessageLookupByLibrary.simpleMessage("WebDAV設定"),
+    "websiteTest": MessageLookupByLibrary.simpleMessage("テスト"),
+    "websiteTestAdd": MessageLookupByLibrary.simpleMessage("サイトを追加"),
+    "websiteTestAll": MessageLookupByLibrary.simpleMessage("すべてテスト"),
+    "websiteTestCurrentRoute": MessageLookupByLibrary.simpleMessage(
+      "現在の Clash 経路 · HTTPS 応答時間",
+    ),
+    "websiteTestFailed": MessageLookupByLibrary.simpleMessage("失敗"),
+    "websiteTestInvalidUrl": MessageLookupByLibrary.simpleMessage(
+      "有効な HTTPS URL を入力してください",
+    ),
+    "websiteTestOffline": MessageLookupByLibrary.simpleMessage("先に接続"),
+    "websiteTestUrl": MessageLookupByLibrary.simpleMessage("HTTPS URL"),
+    "websiteTests": MessageLookupByLibrary.simpleMessage("ウェブサイトテスト"),
     "whitelistMode": MessageLookupByLibrary.simpleMessage("ホワイトリストモード"),
-    "yearsAgo": m25,
+    "yearsAgo": m36,
     "zh_CN": MessageLookupByLibrary.simpleMessage("簡体字中国語"),
   };
 }

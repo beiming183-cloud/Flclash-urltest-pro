@@ -50,6 +50,7 @@ type TLSInfo struct {
 }
 
 type Stats struct {
+	Health string `json:"healthState,omitempty"`
 	Candidate
 	Success              float64     `json:"success"`
 	Failure              float64     `json:"failure"`
@@ -100,6 +101,7 @@ type Stats struct {
 	Failures             int         `json:"-"`
 	Cooldowns            int         `json:"-"`
 	LastError            string      `json:"error"`
+	SuspectUntil         time.Time   `json:"suspectUntil,omitempty"`
 	Quarantined          bool        `json:"quarantined"`
 	decayedAt            time.Time
 	lastFailure          time.Time
@@ -108,23 +110,26 @@ type Stats struct {
 }
 
 type Snapshot struct {
-	StartupHints  []StartupHint      `json:"startupHints,omitempty"`
-	Epoch         uint64             `json:"networkEpoch"`
-	Generation    uint64             `json:"generation"`
-	Primary       string             `json:"primary"`
-	Active        []string           `json:"active"`
-	Nodes         []Stats            `json:"nodes"`
-	Reason        string             `json:"lastSwitchReason"`
-	BudgetUsed    int                `json:"budgetUsed"`
-	BudgetLimit   int                `json:"budgetLimit"`
-	BudgetResetIn int                `json:"budgetResetInSec"`
-	Paused        bool               `json:"paused"`
-	PowerSave     bool               `json:"powerSave"`
-	Running       bool               `json:"running"`
-	NetworkKey    string             `json:"networkKey,omitempty"`
-	Networks      map[string][]Stats `json:"networks,omitempty"`
-	Selections    []SelectionEvent   `json:"selections,omitempty"`
-	Scheduler     map[string]any     `json:"scheduler,omitempty"`
+	Warm                []string                        `json:"warmStandbys,omitempty"`
+	StartupHints        []StartupHint                   `json:"startupHints,omitempty"`
+	Epoch               uint64                          `json:"networkEpoch"`
+	Generation          uint64                          `json:"generation"`
+	Primary             string                          `json:"primary"`
+	Active              []string                        `json:"active"`
+	Nodes               []Stats                         `json:"nodes"`
+	Reason              string                          `json:"lastSwitchReason"`
+	BudgetUsed          int                             `json:"budgetUsed"`
+	BudgetLimit         int                             `json:"budgetLimit"`
+	BudgetResetIn       int                             `json:"budgetResetInSec"`
+	ProbeBudgets        map[ProbeClass]ProbeBudgetState `json:"priorityProbeBudgets,omitempty"`
+	Paused              bool                            `json:"paused"`
+	PowerSave           bool                            `json:"powerSave"`
+	Running             bool                            `json:"running"`
+	NetworkKey          string                          `json:"networkKey,omitempty"`
+	Networks            map[string][]Stats              `json:"networks,omitempty"`
+	NetworkStartupHints map[string][]StartupHint        `json:"networkStartupHints,omitempty"`
+	Selections          []SelectionEvent                `json:"selections,omitempty"`
+	Scheduler           map[string]any                  `json:"scheduler,omitempty"`
 }
 
 type SelectionEvent struct {
@@ -145,28 +150,33 @@ type SelectionEvent struct {
 }
 
 type Engine struct {
-	startup        map[string]StartupHint
-	mu             sync.Mutex
-	now            func() time.Time
-	nodes          map[string]*Stats
-	order          []string
-	epoch          uint64
-	generation     uint64
-	primary        string
-	active         []string
-	reason         string
-	paused         bool
-	powerSave      bool
-	budgetStart    time.Time
-	budget         int
-	network        string
-	networks       map[string][]Stats
-	networkLRU     []string
-	lastSwitch     time.Time
-	lastPoolChange time.Time
-	manual         string
-	startupPrimary bool
-	selections     []SelectionEvent
+	challenger        string
+	challengerSince   time.Time
+	startup           map[string]StartupHint
+	mu                sync.Mutex
+	now               func() time.Time
+	nodes             map[string]*Stats
+	order             []string
+	epoch             uint64
+	generation        uint64
+	primary           string
+	active            []string
+	reason            string
+	paused            bool
+	powerSave         bool
+	budgetStart       time.Time
+	budget            int
+	probeBuckets      map[ProbeClass]*probeBucket
+	network           string
+	networks          map[string][]Stats
+	networkLRU        []string
+	networkHints      map[string]map[string]StartupHint
+	lastSwitch        time.Time
+	lastPoolChange    time.Time
+	manual            string
+	startupPrimary    bool
+	selections        []SelectionEvent
+	selectionObserver func(SelectionEvent, uint64, uint64)
 }
 
 func New(candidates []Candidate, now func() time.Time) (*Engine, error) {
@@ -204,7 +214,7 @@ func (e *Engine) decay(s *Stats, now time.Time) {
 
 func (e *Engine) ready(s *Stats, now time.Time) bool {
 	return !s.Quarantined && !now.Before(s.CoolingUntil) && s.Streak >= 1 &&
-		s.LastError == "" &&
+		(s.LastError == "" || now.Before(s.SuspectUntil)) &&
 		now.Sub(s.TLSAt) <= 10*time.Minute && !s.TLSAt.IsZero() &&
 		now.Sub(s.ExitAt) <= 30*time.Minute && !s.ExitAt.IsZero()
 }
@@ -221,6 +231,10 @@ func CompetitionReady(s Stats) bool {
 	return s.QualityStreak >= 3 && !s.FirstQuality.IsZero() && s.LastSuccess.Sub(s.FirstQuality) >= 10*time.Second
 }
 
+func PrimaryCompetitionReady(s Stats) bool {
+	return s.QualityStreak >= 5 && s.LatencySamples >= 5 && !s.FirstQuality.IsZero() && s.LastQuality.Sub(s.FirstQuality) >= 15*time.Second
+}
+
 func LatencyCost(s Stats) float64 {
 	if s.EWMA <= 0 || s.P95 <= 0 {
 		return math.Inf(1)
@@ -234,6 +248,9 @@ func LatencyCost(s Stats) float64 {
 		p90 = s.P95
 	}
 	cost := .55*p50 + .25*s.EWMA + .2*p90 + .25*s.MAD
+	if s.DialCount >= 3 && s.DialP90 > 0 && !s.LastDial.IsZero() && s.LastSuccess.Sub(s.LastDial) <= 5*time.Minute {
+		cost += .25 * s.DialP90
+	}
 	if s.FirstResponseCount > 0 {
 		first := s.FirstResponseMedian
 		if first <= 0 {
@@ -264,6 +281,12 @@ func (e *Engine) choose(now time.Time) {
 		}
 	}
 	sort.SliceStable(pool, func(i, j int) bool {
+		if pool[i].LastError != pool[j].LastError && (pool[i].LastError == "" || pool[j].LastError == "") {
+			return pool[i].LastError == ""
+		}
+		if a, b := ReliabilityTier(*pool[i]), ReliabilityTier(*pool[j]); a != b {
+			return a < b
+		}
 		qualifiedI, qualifiedJ := CompetitionReady(*pool[i]), CompetitionReady(*pool[j])
 		if qualifiedI != qualifiedJ {
 			return qualifiedI
@@ -281,25 +304,25 @@ func (e *Engine) choose(now time.Time) {
 	if e.manual != "" && e.fresh(e.nodes[e.manual], now) {
 		e.primary = e.manual
 	}
-	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && (e.startupPrimary || now.Sub(e.lastSwitch) >= 30*time.Second) {
+	if e.primary != "" && e.manual == "" && !e.paused && len(pool) > 0 && (e.startupPrimary || now.Sub(e.lastSwitch) >= time.Minute) {
 		current, better := e.nodes[e.primary], pool[0]
 		currentCost, betterCost := LatencyCost(*current), LatencyCost(*better)
-		if better.ID != current.ID && CompetitionReady(*better) &&
-			betterCost < currentCost*.88 && betterCost+25 < currentCost {
-			e.primary = better.ID
-			e.reason = "latency_quality_improved"
-			e.startupPrimary = false
-		}
-		if e.primary == current.ID && now.Sub(e.lastSwitch) >= 30*time.Second {
-			for _, candidate := range pool {
-				if PreferThroughput(*current, *candidate, now) {
-					e.primary = candidate.ID
-					e.reason = "throughput_improved"
-					e.startupPrimary = false
-					break
-				}
+		if better.ID != current.ID && PrimaryCompetitionReady(*better) &&
+			better.LastError == "" && ReliabilityTier(*better) <= ReliabilityTier(*current) &&
+			betterCost <= currentCost*.8 && betterCost+100 <= currentCost {
+			if e.challenger != better.ID {
+				e.challenger, e.challengerSince = better.ID, now
 			}
+			if e.startupPrimary || !CompetitionReady(*current) || now.Sub(e.challengerSince) >= 15*time.Second {
+				e.primary = better.ID
+				e.reason = "latency_quality_improved"
+				e.startupPrimary = false
+			}
+		} else {
+			e.challenger = ""
+			e.challengerSince = time.Time{}
 		}
+
 	}
 	e.active = nil
 	if e.primary != "" && e.fresh(e.nodes[e.primary], now) {
@@ -338,7 +361,42 @@ func (e *Engine) choose(now time.Time) {
 		}
 	}
 	replaced := map[string]string{}
-	if len(e.active) == 3 && !e.paused {
+	// A healthy pool can otherwise remain trapped in one airport forever:
+	// retaining incumbents is useful, but not at the expense of failure domains.
+	if len(e.active) == 3 && !e.paused && now.Sub(e.lastPoolChange) >= 30*time.Second {
+		for _, challenger := range pool {
+			if contains(e.active, challenger.ID) || !CompetitionReady(*challenger) {
+				continue
+			}
+			airportUsed := false
+			for _, id := range e.active {
+				airportUsed = airportUsed || e.nodes[id].Airport == challenger.Airport
+			}
+			if airportUsed {
+				continue
+			}
+			worst := -1
+			for i := 1; i < len(e.active); i++ {
+				incumbent := e.nodes[e.active[i]]
+				duplicate := false
+				for j, id := range e.active {
+					if i != j && e.nodes[id].Airport == incumbent.Airport {
+						duplicate = true
+					}
+				}
+				if duplicate && LatencyCost(*challenger) <= LatencyCost(*incumbent)*1.25+25 &&
+					(worst < 0 || LatencyCost(*incumbent) > LatencyCost(*e.nodes[e.active[worst]])) {
+					worst = i
+				}
+			}
+			if worst >= 0 {
+				replaced[challenger.ID] = e.active[worst]
+				e.active[worst] = challenger.ID
+				break
+			}
+		}
+	}
+	if len(e.active) == 3 && len(replaced) == 0 && !e.paused {
 		for _, challenger := range pool {
 			if contains(e.active, challenger.ID) || !CompetitionReady(*challenger) {
 				continue
@@ -375,6 +433,20 @@ func (e *Engine) choose(now time.Time) {
 			}
 			incumbent := e.nodes[e.active[worst]]
 			cost, oldCost := LatencyCost(*challenger), LatencyCost(*incumbent)
+			// Do not immediately undo a useful independent-airport standby just
+			// because a correlated challenger is a little faster.
+			uniqueAirport, challengerAirportUsed := true, false
+			for i, id := range e.active {
+				if i != worst && e.nodes[id].Airport == incumbent.Airport {
+					uniqueAirport = false
+				}
+				if i != worst && e.nodes[id].Airport == challenger.Airport {
+					challengerAirportUsed = true
+				}
+			}
+			if uniqueAirport && challengerAirportUsed && oldCost <= LatencyCost(*pool[0])*1.25+25 {
+				continue
+			}
 			if cost < oldCost*.88 && cost+25 < oldCost {
 				replaced[challenger.ID] = incumbent.ID
 				e.active[worst] = challenger.ID
@@ -393,6 +465,7 @@ func (e *Engine) choose(now time.Time) {
 	}
 	if old == "" && e.primary != "" {
 		e.reason = "promote"
+		e.recordSelection("empty_exit", e.primary, "", "route_recovered")
 	}
 	if old != e.primary {
 		e.generation++
@@ -402,6 +475,8 @@ func (e *Engine) choose(now time.Time) {
 		}
 		if e.primary != "" {
 			e.recordSelection("primary", e.primary, old, e.reason)
+		} else if old != "" {
+			e.recordSelection("empty_enter", old, "", "no_eligible_route")
 		}
 	}
 	for _, id := range e.active {
@@ -428,6 +503,12 @@ func (e *Engine) recordSelection(kind, id, previous, reason string) {
 		return
 	}
 	event := SelectionEvent{Time: e.now(), Kind: kind, Node: id, Previous: previous, Reason: reason, Latency: node.EWMA, Jitter: node.Jitter, FirstResponse: node.FirstResponse}
+	if kind == "empty_enter" || kind == "empty_exit" {
+		if e.selectionObserver != nil {
+			e.selectionObserver(event, e.epoch, e.generation)
+		}
+		return
+	}
 	event.Samples, event.Qualified = node.LatencySamples, CompetitionReady(*node)
 	if !node.LastSuccess.IsZero() {
 		event.HealthAgeMs = max(0, e.now().Sub(node.LastSuccess).Milliseconds())
@@ -442,9 +523,19 @@ func (e *Engine) recordSelection(kind, id, previous, reason string) {
 		}
 	}
 	e.selections = append(e.selections, event)
+	if e.selectionObserver != nil {
+		e.selectionObserver(event, e.epoch, e.generation)
+	}
 	if len(e.selections) > 128 {
 		e.selections = e.selections[len(e.selections)-128:]
 	}
+}
+
+// The observer runs under the engine lock and must not call back into Engine.
+func (e *Engine) SetSelectionObserver(fn func(SelectionEvent, uint64, uint64)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.selectionObserver = fn
 }
 
 func contains(ids []string, id string) bool {
@@ -477,6 +568,10 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		resetQuality(s)
 		s.healthySince = time.Time{}
 	}
+	if !sample.OK && (sample.Error == "cancelled" || sample.Error == "budget_exhausted") {
+		return false
+	}
+	previousStreak := s.Streak
 	recordOutcome(s, sample.OK, now)
 	s.LastCheck = now
 	s.LastPhase = sample.Phase
@@ -490,6 +585,7 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		s.Count++
 		s.LastSuccess = now
 		s.LastError = ""
+		s.SuspectUntil = time.Time{}
 		s.Failures = 0
 		decayCooldown(s, now)
 		if s.Streak == 0 {
@@ -569,6 +665,15 @@ func (e *Engine) Record(id string, sample Sample, elect bool) bool {
 		s.LastError = sample.Error
 		s.Failures++
 		s.lastFailure = now
+		// Only an explicit background availability probe gets bounded grace.
+		// CONNECT errors and security failures never gain health from this path.
+		s.SuspectUntil = time.Time{}
+		if !sample.Hard && (sample.Phase == "delay" || sample.Phase == "exit") &&
+			s.Failures == 1 && previousStreak > 0 && now.Sub(s.LastSuccess) < 90*time.Second &&
+			!s.TLSAt.IsZero() && !s.ExitAt.IsZero() {
+			s.Streak = previousStreak
+			s.SuspectUntil = now.Add(30 * time.Second)
+		}
 		if sample.Hard {
 			s.Quarantined = true
 		}
@@ -622,7 +727,18 @@ func (e *Engine) Snapshot() Snapshot {
 	}
 	now := e.now()
 	result := Snapshot{Epoch: e.epoch, Generation: e.generation, Primary: e.primary, Active: append([]string{}, e.active...), Reason: e.reason, BudgetUsed: e.budget, BudgetLimit: 900, Paused: e.paused, PowerSave: e.powerSave, Nodes: []Stats{}, NetworkKey: e.network}
+	result.Active = make([]string, 0, 3)
+	for _, id := range e.active {
+		if e.fresh(e.nodes[id], now) {
+			result.Active = append(result.Active, id)
+		}
+	}
+	if result.Primary != "" && !e.fresh(e.nodes[result.Primary], now) {
+		result.Primary = ""
+	}
 	result.Selections = append([]SelectionEvent(nil), e.selections...)
+	result.ProbeBudgets = e.probeBudgetsLocked()
+	result.Warm = e.warmLocked(now)
 	result.BudgetResetIn = int(math.Ceil(time.Hour.Seconds() - now.Sub(e.budgetStart).Seconds()))
 	for _, id := range e.order {
 		s := *e.nodes[id]
@@ -631,6 +747,10 @@ func (e *Engine) Snapshot() Snapshot {
 		}
 		e.decay(&s, now)
 		s.QualityReady = CompetitionReady(s)
+		s.Health = HealthState(s, now)
+		if e.fresh(&s, now) && s.LastError == "" {
+			s.Health = "healthy"
+		}
 		s.Samples = nil
 		s.FirstResponseSamples = nil
 		s.SampleTimes, s.OutcomeTimes, s.FirstResponseTimes = nil, nil, nil
@@ -639,6 +759,28 @@ func (e *Engine) Snapshot() Snapshot {
 		result.Nodes = append(result.Nodes, s)
 	}
 	return result
+}
+
+func (e *Engine) FreshActiveCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := e.now()
+	n := 0
+	for _, id := range e.active {
+		if e.fresh(e.nodes[id], now) {
+			n++
+		}
+	}
+	return n
+}
+
+func (e *Engine) FreshPrimary() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if node := e.nodes[e.primary]; node != nil && e.fresh(node, e.now()) {
+		return e.primary
+	}
+	return ""
 }
 
 func (e *Engine) Attempts() []string {
@@ -663,10 +805,11 @@ func (e *Engine) SetPrimary(id string) bool {
 	}
 	e.manual = id
 	if e.primary != id {
-		e.recordSelection("primary", id, e.primary, "manual")
+		previous := e.primary
 		e.primary = id
 		e.generation++
 		e.reason = "manual"
+		e.recordSelection("primary", id, previous, "manual")
 	}
 	e.choose(e.now())
 	return true
@@ -686,10 +829,12 @@ func (e *Engine) PromoteDial(id string, epoch uint64) bool {
 		return false
 	}
 	if !e.paused && e.primary != id {
-		e.recordSelection("primary", id, e.primary, "dial_failover")
+		previous := e.primary
 		e.primary = id
 		e.generation++
 		e.reason = "dial_failover"
+		e.lastSwitch = e.now()
+		e.recordSelection("primary", id, previous, "dial_failover")
 	}
 	e.choose(e.now())
 	return true
@@ -742,6 +887,7 @@ func (e *Engine) Invalidate() {
 func (e *Engine) Restore(snapshot Snapshot) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.restoreNetworkHints(snapshot.NetworkStartupHints)
 	for _, hint := range snapshot.StartupHints {
 		if e.nodes[hint.Node] != nil && hint.Score > 0 && !math.IsInf(hint.Score, 0) && !math.IsNaN(hint.Score) && reasons[hint.Error] {
 			e.startup[hint.Node] = hint
@@ -801,9 +947,12 @@ func (e *Engine) SwitchNetwork(key string) {
 		e.networkLRU = removeNetwork(e.networkLRU, e.network)
 		e.networkLRU = append(e.networkLRU, e.network)
 	}
+	// Stop has invalidated live qualifications, but per-network probe ordering
+	// remains separate. A hotspot success must not overwrite a Flymodem hint.
+	e.selectNetworkHints(key)
+	e.network = key
 	for _, id := range e.order {
 		candidate := e.nodes[id].Candidate
-		e.rememberStartup(e.nodes[id])
 		e.nodes[id] = &Stats{Candidate: candidate, decayedAt: e.now()}
 	}
 	for _, saved := range e.networks[key] {
@@ -822,11 +971,10 @@ func (e *Engine) SwitchNetwork(key string) {
 			}
 		}
 	}
-	e.network = key
 	e.networkLRU = removeNetwork(e.networkLRU, key)
 	for {
-		data, _ := json.Marshal(e.networks)
-		if len(e.networkLRU) <= 7 && len(data) <= ExportLimit-256*1024 {
+		data, _ := json.Marshal([]any{e.networks, e.networkHints})
+		if len(e.networkLRU) <= 7 && len(data) <= ExportLimit/4 {
 			break
 		}
 		if len(e.networkLRU) == 0 {
@@ -835,6 +983,7 @@ func (e *Engine) SwitchNetwork(key string) {
 		old := e.networkLRU[0]
 		e.networkLRU = e.networkLRU[1:]
 		delete(e.networks, old)
+		delete(e.networkHints, old)
 	}
 	e.epoch++
 	e.generation++
@@ -858,6 +1007,12 @@ func (e *Engine) Statistics() Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	state.Networks = map[string][]Stats{}
+	state.NetworkStartupHints = map[string][]StartupHint{}
+	for key, hints := range e.networkHints {
+		for _, hint := range hints {
+			state.NetworkStartupHints[key] = append(state.NetworkStartupHints[key], hint)
+		}
+	}
 	for key, nodes := range e.networks {
 		state.Networks[key] = append([]Stats(nil), nodes...)
 	}

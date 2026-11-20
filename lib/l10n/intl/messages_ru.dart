@@ -75,9 +75,32 @@ class MessageLookup extends MessageLookupByLibrary {
 
   static String m23(count) => "Выбрано ${count} элементов";
 
-  static String m24(label) => "${label} должен быть URL";
+  static String m26(delay, p95) =>
+      "Первый ответ (с подключением) ${delay} мс · P95 ${p95} мс";
 
-  static String m25(count) =>
+  static String m27(delay, jitter) =>
+      "Задержка запроса ${delay} мс · Разброс ${jitter} мс";
+
+  static String m28(node) => "Добавлен резервный · ${node}";
+
+  static String m29(node) => "Выбран основной · ${node}";
+
+  static String m30(node) => "Не выбран · ${node}";
+
+  static String m31(node) => "Кандидат удалён · ${node}";
+
+  static String m32(previous, node) =>
+      "Основной изменён · ${previous} → ${node}";
+
+  static String m33(speed, delay) =>
+      "Короткая загрузка ${speed} Мбит/с · задержка под нагрузкой ${delay} мс";
+
+  static String m34(speed) =>
+      "Краткая оценка ${speed} Мбит/с · не влияет на выбор";
+
+  static String m35(label) => "${label} должен быть URL";
+
+  static String m36(count) =>
       "${Intl.plural(count, one: '${count} год назад', few: '${count} года назад', many: '${count} лет назад', other: '${count} года назад')}";
 
   final messages = _notInlinedMessages(_notInlinedMessages);
@@ -1010,6 +1033,66 @@ class MessageLookup extends MessageLookupByLibrary {
       "Стратегия разделения не может быть пустой",
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs is empty"),
+    "stabilityConnectionLogging": MessageLookupByLibrary.simpleMessage(
+      "Подключения ChatGPT записываются автоматически. Экспортируйте диагностику сразу после ошибки; архив содержит хронологию.",
+    ),
+    "stabilityFirstResponse": m26,
+    "stabilityFirstResponseUnknown": MessageLookupByLibrary.simpleMessage(
+      "Первый ответ (с подключением): ожидание измерения",
+    ),
+    "stabilityMeasurement": MessageLookupByLibrary.simpleMessage(
+      "Задержка запроса измеряется после подключения; первый ответ и проверка выхода показаны отдельно.",
+    ),
+    "stabilityProbation": MessageLookupByLibrary.simpleMessage(
+      "Доступен · сбор данных о стабильности",
+    ),
+    "stabilityRequestLatency": m27,
+    "stabilitySelectionBackup": m28,
+    "stabilitySelectionBetter": MessageLookupByLibrary.simpleMessage(
+      "Лучше оценка низкой задержки и стабильности",
+    ),
+    "stabilitySelectionExpired": MessageLookupByLibrary.simpleMessage(
+      "Проверка состояния устарела; ожидается повторная проверка",
+    ),
+    "stabilitySelectionFailed": MessageLookupByLibrary.simpleMessage(
+      "Проверка не пройдена; временно исключён",
+    ),
+    "stabilitySelectionFailover": MessageLookupByLibrary.simpleMessage(
+      "Предыдущее подключение не удалось; выбран проверенный кандидат",
+    ),
+    "stabilitySelectionLog": MessageLookupByLibrary.simpleMessage(
+      "Журнал выбора кандидатов",
+    ),
+    "stabilitySelectionLogDescription": MessageLookupByLibrary.simpleMessage(
+      "Последние 128 выборов и исключений · новые сверху",
+    ),
+    "stabilitySelectionLogEmpty": MessageLookupByLibrary.simpleMessage(
+      "Записей пока нет. Подключитесь и дождитесь проверки кандидатов.",
+    ),
+    "stabilitySelectionManual": MessageLookupByLibrary.simpleMessage(
+      "Выбран вручную",
+    ),
+    "stabilitySelectionPrimary": m29,
+    "stabilitySelectionRejected": m30,
+    "stabilitySelectionRemoved": m31,
+    "stabilitySelectionReordered": MessageLookupByLibrary.simpleMessage(
+      "Кандидаты пересортированы",
+    ),
+    "stabilitySelectionSwitch": m32,
+    "stabilitySelectionThroughput": MessageLookupByLibrary.simpleMessage(
+      "Схожая задержка, выше измеренная скорость загрузки",
+    ),
+    "stabilitySelectionTimeout": MessageLookupByLibrary.simpleMessage(
+      "Тайм-аут подключения или проверки",
+    ),
+    "stabilitySelectionUnknownNode": MessageLookupByLibrary.simpleMessage(
+      "Неизвестный узел",
+    ),
+    "stabilitySelectionVerified": MessageLookupByLibrary.simpleMessage(
+      "Проверка цепочки и выхода пройдена",
+    ),
+    "stabilityThroughput": m33,
+    "stabilityThroughputReference": m34,
     "stackMode": MessageLookupByLibrary.simpleMessage("Режим стека"),
     "standard": MessageLookupByLibrary.simpleMessage("Стандартный"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
@@ -1099,7 +1182,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "urlDesc": MessageLookupByLibrary.simpleMessage(
       "Получить профиль через URL",
     ),
-    "urlTip": m24,
+    "urlTip": m35,
     "useHosts": MessageLookupByLibrary.simpleMessage("Использовать hosts"),
     "useSystemHosts": MessageLookupByLibrary.simpleMessage(
       "Использовать системные hosts",
@@ -1120,10 +1203,25 @@ class MessageLookup extends MessageLookupByLibrary {
     "webDAVConfiguration": MessageLookupByLibrary.simpleMessage(
       "Конфигурация WebDAV",
     ),
+    "websiteTest": MessageLookupByLibrary.simpleMessage("Проверить"),
+    "websiteTestAdd": MessageLookupByLibrary.simpleMessage("Добавить сайт"),
+    "websiteTestAll": MessageLookupByLibrary.simpleMessage("Проверить все"),
+    "websiteTestCurrentRoute": MessageLookupByLibrary.simpleMessage(
+      "Текущий маршрут Clash · Время ответа HTTPS",
+    ),
+    "websiteTestFailed": MessageLookupByLibrary.simpleMessage("Ошибка"),
+    "websiteTestInvalidUrl": MessageLookupByLibrary.simpleMessage(
+      "Введите корректный HTTPS URL",
+    ),
+    "websiteTestOffline": MessageLookupByLibrary.simpleMessage(
+      "Сначала подключитесь",
+    ),
+    "websiteTestUrl": MessageLookupByLibrary.simpleMessage("HTTPS URL"),
+    "websiteTests": MessageLookupByLibrary.simpleMessage("Проверка сайтов"),
     "whitelistMode": MessageLookupByLibrary.simpleMessage(
       "Режим белого списка",
     ),
-    "yearsAgo": m25,
+    "yearsAgo": m36,
     "zh_CN": MessageLookupByLibrary.simpleMessage("Упрощенный китайский"),
   };
 }

@@ -17,10 +17,10 @@ func TestBootstrapConnectsBeforeMeasurementThenUpgradesToStableFastNode(t *testi
 		if manual && !e.SetPrimary("a") {
 			t.Fatal("manual selection failed")
 		}
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 5; i++ {
 			e.Record("a", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 600 * time.Millisecond}, true)
 			e.Record("b", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond}, true)
-			if i < 2 {
+			if i < 4 {
 				if e.Snapshot().Primary != "a" {
 					t.Fatal("an unconfirmed faster sample replaced the bootstrap route")
 				}
@@ -32,7 +32,7 @@ func TestBootstrapConnectsBeforeMeasurementThenUpgradesToStableFastNode(t *testi
 			want = "a"
 		}
 		if e.Snapshot().Primary != want {
-			t.Fatal("bootstrap upgrade waited for the thirty-second hold or ignored manual choice", manual, e.Snapshot().Primary)
+			t.Fatal("bootstrap upgrade did not use five sustained samples or ignored manual choice", manual, e.Snapshot().Primary)
 		}
 	}
 }

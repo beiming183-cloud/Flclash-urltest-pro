@@ -73,3 +73,23 @@
 - 被动日志不解密消息，不包含应用内部 SSL 异常、绕过 VPN 的连接或 UDP/QUIC，也不是每条请求的实测公网出口证明。
 
 诊断入口：代理页右上角菜单 → 住宅链路稳定模式 → 导出诊断。
+
+
+## 2026-10-27 手机联网修复候选 2026102701
+
+本地修复并构建 Android arm64 原生核心及 JNI 连接桥：休眠回调不再暂停业务流量或复活已停止状态；TUN 初始化失败向 Android 抛错；等待延迟合格备份并阻止外层重启已耗尽的路线尝试预算；诊断导出运行核心版本。新增回归先失败后通过，相关 Go 测试、wrapper vet、原生编译、接口与 16 KiB 对齐、同证书 APK 签名通过。Flutter/DEX 保留，未完整重编译客户端，尚未手机实机验收。
+
+交付：C:/Users/rog/Documents/Codex/2026-10-24/clash/work/outputs/手机联网修复版安装与验证-20261027.md。构建证据：D:/Codex/Operations/ClashRefactor/20261027-mobile-fix；回归证据：D:/Codex/Operations/FlClashAudit/20261027-fix。未修改桌面代理或清理旧交付。Wi-Fi 观测选择及失效应用名单为未确认潜在问题，对应 Kotlin 代码未改。
+
+
+## 2026-10-28 启动回调及界面检测修复 2026102801
+
+修复上版启动期间全局 TUN 尚未发布导致的空指针；网络钩子捕获所属网卡与每次连接的钩子，去重不变线路状态的界面刷新通知。最终 APK 在后台 Android API36/ARM 翻译模拟器三次冷启动 HTTPS 分别 5.094、4.563、4.297 秒成功，出口为固定 IP1；8 次快速启停后恢复成功。实际安装核心摘要与交付一致。未原样复现用户手机一分钟转圈，不等于手机验收。
+
+交付：C:/Users/rog/Documents/Codex/2026-10-24/clash/work/outputs/手机启动修复与模拟器验收-20261028.md。测试：D:/Codex/Operations/FlClashAudit/20261028-startup-emulator/final。核心与桥更新，Flutter/DEX 保留，配置继续使用 20261027 版本。
+
+## 2026-11-19 Android 机场出口联动 · 2026111902
+
+协作分支为 `codex/latency-quality-096`，本次发布标签为 `mobile-linked-airport-2026111902`。Mihomo 源码在 `core/Clash.Meta`，与 Flutter 和 Android 代码一起检出。贡献者可以从该分支建立自己的功能分支，再向该分支提交 PR。
+
+Android 配置类型 `relay-url-test` 接收住宅组及机场前置，优先探测已验证住宅线路的前置，并按机场实测延迟选路。私有住宅配置由设备本地导入。Release 附件是已在模拟器验证的 arm64 安装包，本次更新复用了之前发行包的 Flutter 与 DEX，替换原生内核。Actions 编译产物使用 CI 的签名配置。

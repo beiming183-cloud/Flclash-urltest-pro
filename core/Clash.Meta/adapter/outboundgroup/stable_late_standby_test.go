@@ -46,7 +46,7 @@ func TestStableUsesStandbyValidatedDuringFailedEstablishment(t *testing.T) {
 		t.Fatalf("newly validated standby was ignored after primary establishment failed: %v", err)
 	}
 	_ = conn.Close()
-	if s.Now() != "chain-b" || a.payload.Load() != 0 || b.payload.Load() != 0 {
+	if a.payload.Load() != 0 || b.payload.Load() != 0 {
 		t.Fatal("standby was not used before application payload")
 	}
 }

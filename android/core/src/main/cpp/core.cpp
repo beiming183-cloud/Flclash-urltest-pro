@@ -11,7 +11,13 @@ JNIEXPORT void JNICALL
 Java_com_follow_clash_core_Core_startTun(JNIEnv *env, jobject thiz, jint fd, jobject cb,
                                          jstring stack, jstring address, jstring dns) {
     const auto interface = new_global(cb);
-    startTUN(interface, fd, get_string(stack), get_string(address), get_string(dns));
+    if (!startTUN(interface, fd, get_string(stack), get_string(address), get_string(dns))) {
+        const auto errorClass = env->FindClass("java/lang/IllegalStateException");
+        if (errorClass != nullptr) {
+            env->ThrowNew(errorClass, "TUN initialization failed; see the core log for details");
+            env->DeleteLocalRef(errorClass);
+        }
+    }
 }
 
 extern "C"

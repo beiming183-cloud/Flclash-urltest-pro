@@ -13,7 +13,7 @@ import (
 
 func (s *Stable) checkTargetTLS(ctx context.Context) {
 	state := s.engine.Snapshot()
-	if len(state.Active) == 0 || !competitionBudgetAvailable(state) {
+	if len(state.Active) == 0 || !s.optionalQualityAvailable(time.Now()) || !s.engine.PriorityAvailable(stability.MaintenanceProbe, 2) {
 		return
 	}
 	s.mu.Lock()
@@ -38,9 +38,17 @@ func (s *Stable) checkTargetTLS(ctx context.Context) {
 	s.mu.Unlock()
 	go func() {
 		defer func() { s.mu.Lock(); s.tlsChecking = false; s.mu.Unlock(); s.wg.Done() }()
+		ctx, cancelDispatch := context.WithCancel(ctx)
+		defer cancelDispatch()
+		releaseDispatch, err := stableBackgroundDispatch.acquire(ctx, s.groupID, 2, cancelDispatch)
+		if err != nil {
+			return
+		}
+		defer releaseDispatch()
+		ctx = C.WithProbeAccounting(ctx, &s.probeTraffic, func() bool { return false })
 		infos := []stability.TLSInfo{}
 		for _, address := range []string{"chatgpt.com:443", "android.chat.openai.com:443"} {
-			if !s.engine.Reserve(false) {
+			if !s.engine.ReservePriority(stability.MaintenanceProbe) {
 				return
 			}
 			child, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -58,7 +66,7 @@ func (s *Stable) checkTargetTLS(ctx context.Context) {
 			if err == nil {
 				phase = "tls"
 				host, _, _ := net.SplitHostPort(address)
-				tc := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+				tc := tls.Client(C.TrackProbeConn(child, conn), &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
 				tlsStarted := time.Now()
 				err = tc.HandshakeContext(child)
 				tlsDuration = time.Since(tlsStarted)

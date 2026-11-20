@@ -173,6 +173,9 @@ func (b *businessRecorder) label(name string) string {
 }
 
 func BusinessError(err error) string {
+	if errors.Is(err, ErrServiceStopped) {
+		return "stopped"
+	}
 	if err == nil || errors.Is(err, io.EOF) {
 		return "eof"
 	}
@@ -236,19 +239,19 @@ func (f *BusinessFlow) emit(event, direction, reason string) {
 	f.owner.pending = append(f.owner.pending, e)
 }
 
-func (f *BusinessFlow) DialAttempt(route BusinessRoute, name string) {
+func (f *BusinessFlow) DialAttempt(route BusinessRoute, name string) int {
 	if f == nil {
-		return
+		return 0
 	}
 	b := f.owner
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if f.closed {
-		return
+		return 0
 	}
 	route.Label = b.label(name)
 	if !validID(route.Group) || !validID(route.Node) {
-		return
+		return 0
 	}
 	if route.Protocol != "Http" && route.Protocol != "Socks5" {
 		route.Protocol = "other_proxy"
@@ -257,6 +260,40 @@ func (f *BusinessFlow) DialAttempt(route BusinessRoute, name string) {
 	f.seenEpoch, f.seenGeneration = route.Epoch, route.Generation
 	f.event.Attempt++
 	f.emit("proxy_dial_started", "", "")
+	return f.event.Attempt
+}
+
+// DialOutcome keeps overlapping establishment attempts paired with their own
+// route. Only the accepted winner becomes the route of the application flow.
+func (f *BusinessFlow) DialOutcome(route BusinessRoute, name string, attempt int, err error, elapsed time.Duration, selected bool) {
+	if f == nil {
+		return
+	}
+	b := f.owner
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if f.closed || !validID(route.Group) || !validID(route.Node) {
+		return
+	}
+	route.Label = b.label(name)
+	if route.Protocol != "Http" && route.Protocol != "Socks5" {
+		route.Protocol = "other_proxy"
+	}
+	if selected {
+		f.event.Route = route
+		f.seenEpoch, f.seenGeneration = route.Epoch, route.Generation
+	}
+	e := f.snapshot(b.j.now())
+	e.Route, e.Attempt, e.DialMs = route, attempt, elapsed.Milliseconds()
+	e.Event = "proxy_dial_ready"
+	if err != nil {
+		e.Event, e.Reason = "proxy_dial_failed", BusinessError(err)
+	}
+	if len(b.pending) >= businessQueueLimit {
+		b.dropped++
+		return
+	}
+	b.pending = append(b.pending, e)
 }
 
 func (f *BusinessFlow) DialResult(err error, elapsed time.Duration) {
@@ -585,7 +622,7 @@ func validBusinessEvent(e BusinessEvent) bool {
 		return false
 	}
 	switch e.Reason {
-	case "", "eof", "cancelled", "timeout", "connection_reset", "connection_aborted", "connection_refused", "broken_pipe", "closed", "other_io_error", "observation_only":
+	case "", "eof", "cancelled", "stopped", "timeout", "connection_reset", "connection_aborted", "connection_refused", "broken_pipe", "closed", "other_io_error", "observation_only":
 	default:
 		return false
 	}

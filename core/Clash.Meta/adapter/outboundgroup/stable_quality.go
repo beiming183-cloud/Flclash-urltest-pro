@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/metacubex/mihomo/component/stability"
@@ -40,7 +41,7 @@ func (s *Stable) BusinessAnomaly(route stability.BusinessRoute, reason string) {
 func (s *Stable) maybeMeasureThroughput(ctx context.Context) {
 	state := s.engine.Snapshot()
 	now := time.Now()
-	if state.Paused || state.PowerSave || len(state.Active) < 2 || !competitionBudgetAvailable(state) {
+	if runtime.GOOS == "android" || state.Paused || state.PowerSave || len(state.Active) < 3 || !competitionBudgetAvailable(state) || !s.optionalTrafficAvailable(now) {
 		return
 	}
 	s.mu.Lock()
@@ -80,6 +81,13 @@ func (s *Stable) maybeMeasureThroughput(ctx context.Context) {
 	s.mu.Unlock()
 	go func() {
 		defer func() { s.mu.Lock(); s.speedBusy = false; s.mu.Unlock(); s.wg.Done() }()
+		ctx, cancelDispatch := context.WithCancel(ctx)
+		defer cancelDispatch()
+		releaseDispatch, err := stableBackgroundDispatch.acquire(ctx, s.groupID, 2, cancelDispatch)
+		if err != nil {
+			return
+		}
+		defer releaseDispatch()
 		select {
 		case s.backgroundSlots <- struct{}{}:
 			defer func() { <-s.backgroundSlots }()
@@ -88,19 +96,18 @@ func (s *Stable) maybeMeasureThroughput(ctx context.Context) {
 		}
 		ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 		defer cancel()
+		ctx = C.WithProbeAccounting(ctx, &s.probeTraffic, func() bool { return s.engine.Reserve(false) })
 		transport := &http.Transport{DisableCompression: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			if !s.engine.Reserve(false) {
-				return nil, errors.New("budget_exhausted")
-			}
 			m := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
 			if err := m.SetRemoteAddress(address); err != nil {
 				return nil, err
 			}
-			return s.byID[id].DialContext(ctx, m)
+			conn, err := s.byID[id].DialContext(ctx, m)
+			return C.TrackProbeConn(ctx, conn), err
 		}}
 		defer transport.CloseIdleConnections()
 		client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		mbps, bytes, reliable, loaded, err := measureThroughput(ctx, client, func() bool { return s.engine.Reserve(false) })
+		mbps, bytes, reliable, loaded, err := measureThroughput(ctx, client, func() bool { return C.ChargeProbeRequest(ctx) })
 		if ctx.Err() != nil {
 			return
 		}
@@ -114,7 +121,7 @@ func (s *Stable) maybeMeasureThroughput(ctx context.Context) {
 			if s.engine.Snapshot().Generation != state.Generation {
 				s.log("switch", s.engine.Snapshot().Reason, s.engine.Snapshot().Primary, true, 0)
 			}
-			OnStableRouteChange()
+			s.notifyRouteChange()
 		}
 	}()
 }

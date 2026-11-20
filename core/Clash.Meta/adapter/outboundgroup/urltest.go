@@ -19,6 +19,7 @@ type URLTestOption struct {
 }
 
 type URLTest struct {
+	linked *relaySelection
 	*GroupBase
 	selected       string
 	testUrl        string
@@ -29,11 +30,20 @@ type URLTest struct {
 	fastSingle     *singledo.Single[C.Proxy]
 }
 
+func (u *URLTest) linkRelays(linked *relaySelection) {
+	u.linked = linked
+	u.fastSingle = singledo.NewSingle[C.Proxy](time.Second)
+}
+
 func (u *URLTest) Now() string {
 	return u.fast(false).Name()
 }
 
 func (u *URLTest) Set(name string) error {
+	if u.linked != nil && name == "" {
+		u.ForceSet("")
+		return nil
+	}
 	var p C.Proxy
 	for _, proxy := range u.GetProxies(false) {
 		if proxy.Name() == name {
@@ -115,6 +125,9 @@ func (u *URLTest) fast(touch bool) C.Proxy {
 			}
 		}
 
+		if u.linked != nil {
+			return u.linked.pick(proxies, u.linked.parents(), time.Now()), nil
+		}
 		fast := proxies[0]
 		minDelay := fast.LastDelayForTestUrl(u.testUrl)
 		fastNotExist := true

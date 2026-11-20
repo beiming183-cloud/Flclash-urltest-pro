@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -54,6 +55,9 @@ func (p *Proxy) AliveForTestUrl(url string) bool {
 
 // DialContext implements C.ProxyAdapter
 func (p *Proxy) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	if metadata != nil && metadata.Type != C.INNER && !C.HasProbeAccounting(ctx) {
+		C.ProxyBusinessActivity.Store(time.Now().UnixNano())
+	}
 	conn, err := p.ProxyAdapter.DialContext(ctx, metadata)
 	return conn, err
 }
@@ -115,6 +119,13 @@ func (p *Proxy) ExtraDelayHistories() map[string]C.ProxyState {
 
 // LastDelayForTestUrl return last history record of the specified URL. if proxy is not alive, return the max value of uint16.
 // implements C.Proxy
+func (p *Proxy) LatestRelaySample(url string) C.DelayHistory {
+	if state, ok := p.extra.Load(url); ok {
+		return state.history.Last()
+	}
+	return C.DelayHistory{}
+}
+
 func (p *Proxy) LastDelayForTestUrl(url string) (delay uint16) {
 	var maxDelay uint16 = 0xffff
 
@@ -172,6 +183,9 @@ func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatu
 	var satisfied bool
 
 	defer func() {
+		if ctx.Err() == context.Canceled || err != nil && strings.Contains(err.Error(), "budget_exhausted") {
+			return
+		}
 		if UrlTestHook != nil {
 			UrlTestHook(url, p.Name(), result.Delay)
 		}
@@ -224,6 +238,7 @@ func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatu
 	defer func() {
 		_ = instance.Close()
 	}()
+	tracked := C.TrackProbeConn(ctx, instance)
 
 	req, err := http.NewRequest(http.MethodHead, url, nil)
 	if err != nil {
@@ -238,7 +253,7 @@ func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatu
 
 	transport := &http.Transport{
 		DialContext: func(context.Context, string, string) (net.Conn, error) {
-			return instance, nil
+			return tracked, nil
 		},
 		// from http.DefaultTransport
 		MaxIdleConns:          100,
@@ -258,6 +273,10 @@ func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatu
 
 	defer client.CloseIdleConnections()
 
+	if !C.ChargeProbeRequest(ctx) {
+		err = errors.New("budget_exhausted")
+		return
+	}
 	resp, err := client.Do(req)
 	result.FirstResponse = time.Since(start)
 
@@ -268,6 +287,10 @@ func (p *Proxy) URLTestWithTiming(ctx context.Context, url string, expectedStatu
 	_ = resp.Body.Close()
 
 	if unifiedDelay {
+		if !C.ChargeProbeRequest(ctx) {
+			err = errors.New("budget_exhausted")
+			return
+		}
 		second := time.Now()
 		var ignoredErr error
 		var secondResp *http.Response

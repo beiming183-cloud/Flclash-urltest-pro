@@ -21,6 +21,12 @@ import (
 )
 
 func stableError(err error) (string, bool) {
+	if errors.Is(err, stability.ErrServiceStopped) {
+		return "stopped", false
+	}
+	if strings.Contains(err.Error(), "qualification_wait_timeout") {
+		return "qualification_wait_timeout", false
+	}
 	var hostname x509.HostnameError
 	var invalid x509.CertificateInvalidError
 	var authority x509.UnknownAuthorityError
@@ -68,33 +74,42 @@ func stableError(err error) (string, bool) {
 type stableAvailabilityKey struct{}
 
 func stableExitRequestTimeout(quick bool) time.Duration {
-	if quick {
-		return 2500 * time.Millisecond
-	}
 	return 4 * time.Second
 }
 
+func stableAvailabilityTimeout() time.Duration {
+	// Both exit services can use their full allowance, with scheduling slack.
+	return 2*stableExitRequestTimeout(true) + 500*time.Millisecond
+}
+
 func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify bool, epoch uint64, reserve func() bool) stability.Sample {
+	if !C.HasProbeAccounting(ctx) {
+		ctx = C.WithProbeAccounting(ctx, &C.ProbeTraffic{}, reserve)
+	}
 	quick, _ := ctx.Value(stableAvailabilityKey{}).(bool)
 	sample := stability.Sample{Epoch: epoch, Phase: "delay", Service: "control"}
 	status, _ := utils.NewUnsignedRanges[uint16]("204")
-	measure := func(url string) (uint16, error) {
-		if !reserve() {
-			return 0, errors.New("budget_exhausted")
-		}
+	measure := func(url string) (result uint16, resultErr error) {
+		defer func() { stableProbeSites.observe(ctx, url, resultErr, time.Now()) }()
+		// A slow first control endpoint must leave time for the independent one.
+		measureCtx, cancelMeasure := context.WithTimeout(ctx, 4*time.Second)
+		defer cancelMeasure()
 		var delay uint16
 		var err error
 		if timed, ok := proxy.(interface {
 			URLTestWithTiming(context.Context, string, utils.IntRanges[uint16]) (C.URLTestResult, error)
 		}); ok {
-			result, testErr := timed.URLTestWithTiming(ctx, url, status)
+			result, testErr := timed.URLTestWithTiming(measureCtx, url, status)
 			delay, err = result.Delay, testErr
 			sample.FirstResponse = result.FirstResponse
 			if err == nil && !result.ReusedConnection {
 				err = errors.New("service_failed")
 			}
 		} else {
-			delay, err = proxy.URLTest(ctx, url, status)
+			if !reserve() {
+				return 0, errors.New("budget_exhausted")
+			}
+			delay, err = proxy.URLTest(measureCtx, url, status)
 		}
 		if err == nil && !proxy.AliveForTestUrl(url) {
 			return 0, errors.New("service_failed")
@@ -102,12 +117,16 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		return delay, err
 	}
 	if !quick {
-		delay, err := measure("https://www.gstatic.com/generate_204")
+		sites := stableProbeSites.ordered(ctx, []string{"https://www.gstatic.com/generate_204", "https://cp.cloudflare.com/generate_204"}, time.Now())
+		if sites[0] != "https://www.gstatic.com/generate_204" {
+			sample.Service = "control_backup"
+		}
+		delay, err := measure(sites[0])
 		if err != nil && ctx.Err() == nil {
 			_, hard := stableError(err)
 			if !hard {
 				sample.Service = "control_backup"
-				delay, err = measure("https://cp.cloudflare.com/generate_204")
+				delay, err = measure(sites[1])
 			}
 		}
 		if err != nil {
@@ -128,19 +147,25 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		sample.Phase, sample.Service = "exit", "bootstrap"
 	}
 	transport := &http.Transport{DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-		if !reserve() {
-			return nil, errors.New("budget_exhausted")
-		}
 		m := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
 		if err := m.SetRemoteAddress(address); err != nil {
 			return nil, err
 		}
-		return proxy.DialContext(ctx, m)
+		conn, err := proxy.DialContext(ctx, m)
+		return C.TrackProbeConn(ctx, conn), err
 	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	request := func(url string) ([]byte, error) {
+	request := func(url string) (result []byte, resultErr error) {
+		defer func() { stableProbeSites.observe(ctx, url, resultErr, time.Now()) }()
+		if !C.ChargeProbeRequest(ctx) {
+			return nil, errors.New("budget_exhausted")
+		}
 		timeout := stableExitRequestTimeout(quick)
+		if search, _ := ctx.Value(stableSearchKey{}).(bool); search {
+			// Leave room for the independent service inside the short pass.
+			timeout = 2500 * time.Millisecond
+		}
 		requestCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, url, nil)
@@ -162,7 +187,8 @@ func probeStable(ctx context.Context, proxy C.Proxy, expected string, verify boo
 		if !quick {
 			sample.Phase, sample.Service = "exit", "exit"
 		}
-		err, hard := verifyStableExit(expected, request)
+		sites := stableProbeSites.ordered(ctx, []string{"https://api.ipify.org", "https://www.cloudflare.com/cdn-cgi/trace"}, time.Now())
+		err, hard := verifyStableExitServices(expected, request, sites)
 		if err != nil {
 			sample.Error, sample.Hard = stableError(err)
 			sample.Hard = sample.Hard || hard

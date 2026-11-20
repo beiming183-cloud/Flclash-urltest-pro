@@ -66,7 +66,7 @@ func TestPolicyDialTimingCannotGrantEligibilityAndExpires(t *testing.T) {
 	if len(e.Attempts()) != 0 || CompetitionReady(node) || ConnectionTimeout(node, now) != time.Second {
 		t.Fatal("dial timing granted route eligibility or did not shorten establishment timeout")
 	}
-	if ConnectionTimeout(node, now.Add(6*time.Minute)) != 3*time.Second {
+	if ConnectionTimeout(node, now.Add(6*time.Minute)) != 4*time.Second {
 		t.Fatal("stale timings controlled a changed network")
 	}
 	e.Invalidate()
@@ -117,7 +117,7 @@ func TestPolicyThroughputCannotOverrideLatencyOrIncompleteEvidence(t *testing.T)
 	}
 }
 
-func TestPolicyThroughputCanUpgradeAlreadyFastBootstrapPrimary(t *testing.T) {
+func TestPolicyThroughputDoesNotReplaceHealthyPrimary(t *testing.T) {
 	now := time.Unix(1000, 0)
 	e, _ := New([]Candidate{{"a", "r1", "x"}, {"b", "r2", "y"}}, func() time.Time { return now })
 	e.Record("a", Sample{Epoch: 1, OK: true, TLS: true, Exit: true}, true)
@@ -129,7 +129,7 @@ func TestPolicyThroughputCanUpgradeAlreadyFastBootstrapPrimary(t *testing.T) {
 	now = now.Add(20 * time.Second)
 	e.ObserveThroughput("a", 1, 5, 1048576, true, 200*time.Millisecond)
 	e.ObserveThroughput("b", 1, 20, 1048576, true, 205*time.Millisecond)
-	if state := e.Snapshot(); state.Primary != "b" || state.Reason != "throughput_improved" {
-		t.Fatal("a low-latency bootstrap primary prevented a measured throughput upgrade", state.Primary, state.Reason)
+	if state := e.Snapshot(); state.Primary != "a" || state.Reason == "throughput_improved" {
+		t.Fatal("throughput alone replaced a healthy primary", state.Primary, state.Reason)
 	}
 }

@@ -20,12 +20,19 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	C "github.com/metacubex/mihomo/constant"
 )
 
 const LogLimit = 1 << 20
 const ExportLimit = 2 << 20
 
 type Event struct {
+	Target          string    `json:"targetId,omitempty"`
+	Attempts        int       `json:"attemptCount,omitempty"`
+	RemainingMs     int64     `json:"remainingDeadlineMs,omitempty"`
+	ProbeClass      string    `json:"probeClass,omitempty"`
+	Tokens          float64   `json:"probeTokens,omitempty"`
 	Schema          int       `json:"schemaVersion"`
 	Time            time.Time `json:"wallClock"`
 	MonotonicMs     int64     `json:"monotonicMs"`
@@ -33,6 +40,10 @@ type Event struct {
 	Reason          string    `json:"reason,omitempty"`
 	Group           string    `json:"groupId"`
 	Node            string    `json:"nodeId,omitempty"`
+	Previous        string    `json:"previousNodeId,omitempty"`
+	GuardCode       string    `json:"guardCode,omitempty"`
+	GuardReads      int       `json:"guardReadAttempts,omitempty"`
+	HeartbeatAgeMs  int64     `json:"guardHeartbeatAgeMs,omitempty"`
 	Epoch           uint64    `json:"networkEpoch"`
 	Generation      uint64    `json:"routeGeneration"`
 	LatencyMs       int64     `json:"latencyMs,omitempty"`
@@ -58,12 +69,31 @@ type Journal struct {
 	states       map[string]Snapshot
 	tls          map[string][]TLSInfo
 	business     *businessRecorder
+	minutes      map[string]*minuteAccumulator
 }
 
 var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_failover": true, "network_changed": true, "network_offline": true, "relay_dial_timeout": true, "connect_rejected": true, "residential_auth": true, "tls_aborted": true, "cert_untrusted": true, "cert_hostname": true, "cert_expired": true, "unexpected_exit": true, "service_failed": true, "cancelled": true, "budget_exhausted": true, "unknown": true, "stopped": true}
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
+	for _, name := range []string{"dial_final", "dial_attempt", "empty_enter", "empty_exit"} {
+		events[name] = true
+	}
+	for _, name := range []string{"no_eligible_route", "route_recovered", "target_timeout", "candidate_backoff", "caller_deadline"} {
+		reasons[name] = true
+	}
+	reasons["hedge_backup_won"], reasons["hedge_primary_retained"] = true, true
+	for _, event := range []string{"primary_changed", "dial_selected", "dial_result", "dial_failed", "guard_read_recovered"} {
+		events[event] = true
+	}
+	events["dial_hedge"], events["dial_discarded"] = true, true
+	reasons["slow_establishment"], reasons["qualification_changed"] = true, true
+	events["dial_handoff"] = true
+	reasons["config_or_network_restart"] = true
+	events["lifecycle"] = true
+	for _, reason := range []string{"started", "shutdown", "config_applied", "guard_blocked", "guard_resumed"} {
+		reasons[reason] = true
+	}
 	events["business_recheck"], events["throughput"] = true, true
 	for _, reason := range []string{"throughput_improved", "timeout", "connection_reset", "broken_pipe", "connection_aborted"} {
 		reasons[reason] = true
@@ -71,6 +101,8 @@ func init() {
 	events["startup_probe"] = true
 	reasons["startup_revalidation"] = true
 	reasons["startup_availability"] = true
+	reasons["search_deferred"] = true
+	reasons["qualification_wait_timeout"] = true
 	for _, reason := range []string{"https_timeout", "tls_handshake_timeout", "exit_query_timeout", "latency_improved", "latency_quality_improved"} {
 		reasons[reason] = true
 	}
@@ -160,6 +192,19 @@ func (j *Journal) Store(group string, state Snapshot) error {
 	for _, hint := range state.StartupHints {
 		if !validID(hint.Node) || hint.Score <= 0 || math.IsInf(hint.Score, 0) || math.IsNaN(hint.Score) || !reasons[hint.Error] {
 			return errors.New("invalid startup hint")
+		}
+	}
+	if len(state.NetworkStartupHints) > 8 {
+		return errors.New("network startup history budget exceeded")
+	}
+	for key, hints := range state.NetworkStartupHints {
+		if !validID(key) || len(hints) > MaxCandidates {
+			return errors.New("invalid network startup history")
+		}
+		for _, hint := range hints {
+			if !validID(hint.Node) || hint.Score <= 0 || math.IsInf(hint.Score, 0) || math.IsNaN(hint.Score) || !reasons[hint.Error] {
+				return errors.New("invalid network startup hint")
+			}
 		}
 	}
 	for _, event := range state.Selections {
@@ -283,7 +328,7 @@ func (j *Journal) Record(event Event) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	validPhase := event.Phase == "" || event.Phase == "delay" || event.Phase == "residential" || event.Phase == "tls" || event.Phase == "exit"
-	validService := event.Service == "" || event.Service == "control" || event.Service == "control_backup" || event.Service == "chatgpt" || event.Service == "android" || event.Service == "exit" || event.Service == "bootstrap"
+	validService := event.Service == "" || event.Service == "control" || event.Service == "control_backup" || event.Service == "chatgpt" || event.Service == "android" || event.Service == "exit" || event.Service == "bootstrap" || event.Service == "google" || event.Service == "github" || event.Service == "other"
 	if !validPhase || !validService {
 		j.dropped++
 		return nil
@@ -292,10 +337,22 @@ func (j *Journal) Record(event Event) error {
 		j.dropped++
 		return nil
 	}
+	if event.Target != "" && !validID(event.Target) || event.Attempts < 0 || event.Attempts > 3 || event.RemainingMs < 0 || event.RemainingMs > 600000 || (event.ProbeClass != "" && event.ProbeClass != "maintenance" && event.ProbeClass != "recovery" && event.ProbeClass != "availability_search") {
+		j.dropped++
+		return nil
+	}
 	now := j.now()
 	event.Schema = 1
+	if event.Previous != "" && !validID(event.Previous) || !validGuardCode(event.GuardCode) || event.GuardReads < 0 || event.GuardReads > 3 {
+		j.dropped++
+		return nil
+	}
 	event.Time = now.UTC()
 	event.MonotonicMs = now.Sub(j.start).Milliseconds()
+	j.countMinuteLocked(event)
+	if (event.Event == "dial_result" || event.Event == "dial_final" || event.Event == "dial_attempt") && event.OK && !now.Before(j.debugUntil) {
+		return nil
+	}
 	if event.OK && event.Event == "probe" && !now.Before(j.debugUntil) {
 		if now.Sub(j.lastSnapshot) < time.Minute {
 			return nil
@@ -303,7 +360,7 @@ func (j *Journal) Record(event Event) error {
 		event.Event = "snapshot"
 		j.lastSnapshot = now
 	}
-	if j.last != nil && !event.OK && event.Event == j.last.Event && event.Reason == j.last.Reason && event.Node == j.last.Node && event.Epoch == j.last.Epoch && now.Sub(j.last.Time) < 3*time.Second {
+	if j.last != nil && !event.OK && event.Group == j.last.Group && event.Target == j.last.Target && event.Event == j.last.Event && event.Reason == j.last.Reason && event.Node == j.last.Node && event.Epoch == j.last.Epoch && now.Sub(j.last.Time) < 3*time.Second {
 		j.last.Repeated++
 		return nil
 	}
@@ -330,6 +387,11 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		}
 		j.last = nil
 	}
+	minuteRows, err := j.exportMinutesLocked()
+	if err != nil {
+		return nil, err
+	}
+	minuteTruncated := 0
 	lines := [][]byte{}
 	cutoff := j.now().Add(-15 * time.Minute)
 	for i := 3; i >= 0; i-- {
@@ -376,6 +438,11 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 			counts[e.Reason] += 1 + e.Repeated
 		}
 		manifest := map[string]any{"schemaVersion": 2, "events": len(lines), "truncated": truncated, "dropped": j.dropped, "generatedAt": j.now().UTC(), "debugRemainingSec": max(0, int64(j.debugUntil.Sub(j.now()).Seconds())), "businessDiagnosticVersion": 1, "businessEvents": len(business), "businessActive": len(active), "businessDropped": businessDropped, "businessTruncated": businessTruncated, "businessScope": "passive-tcp", "businessRetentionMinutes": 30}
+		manifest["minuteSummaryVersion"], manifest["minuteSummaryRows"], manifest["minuteSummaryTruncated"] = 1, len(minuteRows), minuteTruncated
+		manifest["minuteSummaryRetentionHours"], manifest["minuteSummaryDiskLimitBytes"] = 48, 2*minuteFileLimit
+		if len(minuteRows) > 0 {
+			manifest["minuteCoverageStart"], manifest["minuteCoverageEnd"] = minuteRows[0].Minute, minuteRows[len(minuteRows)-1].Minute
+		}
 		if len(business) > 0 {
 			manifest["businessCoverageStart"] = business[0].Time
 			manifest["businessCoverageEnd"] = business[len(business)-1].Time
@@ -390,7 +457,7 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": "2026101701", "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": C.Version, "coreVersion": C.Version, "coreBuildTime": C.BuildTime, "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err
@@ -399,7 +466,16 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 				return nil, err
 			}
 		}
-		w, err := z.Create("events.jsonl")
+		w, err := z.Create("minute-summary.jsonl")
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range minuteRows {
+			if err = json.NewEncoder(w).Encode(row); err != nil {
+				return nil, err
+			}
+		}
+		w, err = z.Create("events.jsonl")
 		if err != nil {
 			return nil, err
 		}
@@ -448,6 +524,12 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		}
 		if buf.Len() <= ExportLimit {
 			return buf.Bytes(), nil
+		}
+		if len(lines) == 0 && len(business) == 0 && len(minuteRows) > 0 {
+			n := max(1, len(minuteRows)/10)
+			minuteRows = minuteRows[n:]
+			minuteTruncated += n
+			continue
 		}
 		if len(lines) == 0 && len(business) == 0 {
 			return nil, errors.New("summary exceeds export budget")

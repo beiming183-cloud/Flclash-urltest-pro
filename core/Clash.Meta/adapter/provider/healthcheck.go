@@ -26,19 +26,27 @@ type extraOption struct {
 	filters        map[string]struct{}
 }
 
+var AcquireBackgroundHealth = func(ctx context.Context) (context.Context, func(), error) {
+	return ctx, func() {}, nil
+}
+
+func (hc *HealthCheck) SetProbeBatch(fn func([]C.Proxy) []C.Proxy) { hc.probeBatch = fn }
+
 type HealthCheck struct {
-	ctx            context.Context
-	ctxCancel      context.CancelFunc
-	url            string
-	extra          map[string]*extraOption
-	mu             sync.Mutex
-	proxies        []C.Proxy
-	interval       time.Duration
-	lazy           bool
-	expectedStatus utils.IntRanges[uint16]
-	lastTouch      atomic.TypedValue[time.Time]
-	singleDo       *singledo.Single[struct{}]
-	timeout        time.Duration
+	probeBatch      func([]C.Proxy) []C.Proxy
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	url             string
+	extra           map[string]*extraOption
+	mu              sync.Mutex
+	proxies         []C.Proxy
+	interval        time.Duration
+	lazy            bool
+	expectedStatus  utils.IntRanges[uint16]
+	lastTouch       atomic.TypedValue[time.Time]
+	singleDo        *singledo.Single[struct{}]
+	timeout         time.Duration
+	backgroundLease func(context.Context) (context.Context, func(), error)
 }
 
 func (hc *HealthCheck) process() {
@@ -168,7 +176,11 @@ func (hc *HealthCheck) execute(b *errgroup.Group, url, uid string, option *extra
 		}
 	}
 
-	for _, proxy := range hc.proxies {
+	proxies := hc.proxies
+	if hc.probeBatch != nil && url == hc.url {
+		proxies = hc.probeBatch(proxies)
+	}
+	for _, proxy := range proxies {
 		// skip proxies that do not require health check
 		if filterReg != nil {
 			if match, _ := filterReg.MatchString(proxy.Name()); !match {
@@ -178,7 +190,16 @@ func (hc *HealthCheck) execute(b *errgroup.Group, url, uid string, option *extra
 
 		p := proxy
 		b.Go(func() error {
-			ctx, cancel := context.WithTimeout(hc.ctx, hc.timeout)
+			lease := hc.backgroundLease
+			if lease == nil {
+				lease = AcquireBackgroundHealth
+			}
+			owner, release, err := lease(hc.ctx)
+			if err != nil {
+				return nil
+			}
+			defer release()
+			ctx, cancel := context.WithTimeout(owner, hc.timeout)
 			defer cancel()
 			log.Debugln("Health Checking, proxy: %s, url: %s, id: {%s}", p.Name(), url, uid)
 			_, _ = p.URLTest(ctx, url, expectedStatus)
@@ -203,15 +224,16 @@ func NewHealthCheck(proxies []C.Proxy, url string, timeout uint, interval uint, 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &HealthCheck{
-		ctx:            ctx,
-		ctxCancel:      cancel,
-		proxies:        proxies,
-		url:            url,
-		timeout:        time.Duration(timeout) * time.Millisecond,
-		extra:          map[string]*extraOption{},
-		interval:       time.Duration(interval) * time.Second,
-		lazy:           lazy,
-		expectedStatus: expectedStatus,
-		singleDo:       singledo.NewSingle[struct{}](time.Second),
+		ctx:             ctx,
+		ctxCancel:       cancel,
+		backgroundLease: AcquireBackgroundHealth,
+		proxies:         proxies,
+		url:             url,
+		timeout:         time.Duration(timeout) * time.Millisecond,
+		extra:           map[string]*extraOption{},
+		interval:        time.Duration(interval) * time.Second,
+		lazy:            lazy,
+		expectedStatus:  expectedStatus,
+		singleDo:        singledo.NewSingle[struct{}](time.Second),
 	}
 }

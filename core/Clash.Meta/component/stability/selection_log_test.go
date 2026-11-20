@@ -20,6 +20,12 @@ func TestSelectionLogRecordsRealChangesWithoutRoutineNoise(t *testing.T) {
 		e.Record("fast", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond, FirstResponse: 1500 * time.Millisecond}, true)
 		now = now.Add(5 * time.Second)
 	}
+	for i := 0; i < 24; i++ {
+		now = now.Add(5 * time.Second)
+		e.Record("slow", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 450 * time.Millisecond}, true)
+		e.Record("fast", Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 200 * time.Millisecond, FirstResponse: 1500 * time.Millisecond}, true)
+	}
+
 	found := false
 	for _, event := range e.Snapshot().Selections {
 		if event.Kind == "primary" && event.Node == "fast" && event.Previous == "slow" {

@@ -39,9 +39,22 @@ func resetTransport(s *Stats) {
 
 func ConnectionTimeout(s Stats, now time.Time) time.Duration {
 	if s.DialCount < 3 || s.DialP90 <= 0 || now.Sub(s.LastDial) > 5*time.Minute {
-		return 3 * time.Second
+		return 4 * time.Second
 	}
 	ms := math.Min(math.Max(3*s.DialP90+350, 1000), 6000)
+	return time.Duration(ms * float64(time.Millisecond))
+}
+
+// EstablishmentHedgeDelay uses cold connection observations, not a warm URLTest
+// RTT. A slow primary gets one bounded parallel CONNECT before its full timeout.
+func EstablishmentHedgeDelay(s Stats, now time.Time) time.Duration {
+	ms := 900.0
+	if s.DialCount >= 3 && s.DialP90 > 0 && now.Sub(s.LastDial) <= 5*time.Minute {
+		ms = s.DialP90 + 150
+	} else if s.FirstResponseCount > 0 && s.FirstResponseMedian > 0 {
+		ms = 1.25*s.FirstResponseMedian + 200
+	}
+	ms = math.Min(math.Max(ms, 750), 1500)
 	return time.Duration(ms * float64(time.Millisecond))
 }
 

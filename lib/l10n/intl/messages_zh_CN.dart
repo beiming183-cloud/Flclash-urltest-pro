@@ -69,9 +69,31 @@ class MessageLookup extends MessageLookupByLibrary {
 
   static String m23(count) => "已选择 ${count} 项";
 
-  static String m24(label) => "${label}必须为URL";
+  static String m24(seconds) => "${seconds} 秒前检测";
 
-  static String m25(count) => "${count} 年前";
+  static String m25(seconds) => "详细记录还剩 ${seconds} 秒";
+
+  static String m26(delay, p95) => "首次响应（含建连）${delay} ms · P95 ${p95} ms";
+
+  static String m27(delay, jitter) => "请求延迟 ${delay} ms · 波动 ${jitter} ms";
+
+  static String m28(node) => "补入备用 · ${node}";
+
+  static String m29(node) => "选为主用 · ${node}";
+
+  static String m30(node) => "暂不入选 · ${node}";
+
+  static String m31(node) => "移出候选 · ${node}";
+
+  static String m32(previous, node) => "切换主用 · ${previous} → ${node}";
+
+  static String m33(speed, delay) => "小流量实测 ${speed} Mbps · 负载延迟 ${delay} ms";
+
+  static String m34(speed) => "短时下载参考 ${speed} Mbps · 不参与排名";
+
+  static String m35(label) => "${label}必须为URL";
+
+  static String m36(count) => "${count} 年前";
 
   final messages = _notInlinedMessages(_notInlinedMessages);
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
@@ -671,6 +693,95 @@ class MessageLookup extends MessageLookupByLibrary {
     "splitStrategy": MessageLookupByLibrary.simpleMessage("分流策略"),
     "splitStrategyNotEmpty": MessageLookupByLibrary.simpleMessage("分流策略不能为空"),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs为空"),
+    "stabilityAge": m24,
+    "stabilityAuthentication": MessageLookupByLibrary.simpleMessage(
+      "住宅认证或连接被拒绝",
+    ),
+    "stabilityAutomatic": MessageLookupByLibrary.simpleMessage("自动择优与故障切换"),
+    "stabilityBackup": MessageLookupByLibrary.simpleMessage("备用"),
+    "stabilityBudget": MessageLookupByLibrary.simpleMessage("等待检测预算恢复"),
+    "stabilityCertificate": MessageLookupByLibrary.simpleMessage("证书验证失败"),
+    "stabilityCertificateShort": MessageLookupByLibrary.simpleMessage("证书异常"),
+    "stabilityConnectionLogging": MessageLookupByLibrary.simpleMessage(
+      "自动记录 ChatGPT 连接，无需开启调试；出错后立即导出，内含中文时间线。",
+    ),
+    "stabilityDebug": m25,
+    "stabilityDelayTimeout": MessageLookupByLibrary.simpleMessage("链路检测超时"),
+    "stabilityExitShort": MessageLookupByLibrary.simpleMessage("出口异常"),
+    "stabilityExitTimeout": MessageLookupByLibrary.simpleMessage("出口验证超时"),
+    "stabilityExport": MessageLookupByLibrary.simpleMessage("导出诊断"),
+    "stabilityFailureShort": MessageLookupByLibrary.simpleMessage("检测异常"),
+    "stabilityFirstResponse": m26,
+    "stabilityFirstResponseUnknown": MessageLookupByLibrary.simpleMessage(
+      "首次响应（含建连）：等待测量",
+    ),
+    "stabilityMark": MessageLookupByLibrary.simpleMessage("标记故障并详细记录 10 分钟"),
+    "stabilityMeasurement": MessageLookupByLibrary.simpleMessage(
+      "请求延迟在连接建立后测量，首次响应与出口核验单独显示。",
+    ),
+    "stabilityNoGroup": MessageLookupByLibrary.simpleMessage(
+      "当前配置没有稳定组，普通代理组保持原有行为。",
+    ),
+    "stabilityPowerSave": MessageLookupByLibrary.simpleMessage("省电检测"),
+    "stabilityPrimary": MessageLookupByLibrary.simpleMessage("主用"),
+    "stabilityProbation": MessageLookupByLibrary.simpleMessage(
+      "已可用 · 正在积累稳定性样本",
+    ),
+    "stabilityReady": MessageLookupByLibrary.simpleMessage("已连接"),
+    "stabilityRequestLatency": m27,
+    "stabilitySelectionBackup": m28,
+    "stabilitySelectionBetter": MessageLookupByLibrary.simpleMessage(
+      "低延迟稳定评分更好",
+    ),
+    "stabilitySelectionExpired": MessageLookupByLibrary.simpleMessage(
+      "健康验证已过期，等待复验",
+    ),
+    "stabilitySelectionFailed": MessageLookupByLibrary.simpleMessage(
+      "校验失败，暂时排除",
+    ),
+    "stabilitySelectionFailover": MessageLookupByLibrary.simpleMessage(
+      "原线路连接失败，换用已验证候选",
+    ),
+    "stabilitySelectionLog": MessageLookupByLibrary.simpleMessage("候选池选择日志"),
+    "stabilitySelectionLogDescription": MessageLookupByLibrary.simpleMessage(
+      "最近 128 条入选与排除记录 · 最新在前",
+    ),
+    "stabilitySelectionLogEmpty": MessageLookupByLibrary.simpleMessage(
+      "还没有选择记录，连接后等待候选检测。",
+    ),
+    "stabilitySelectionManual": MessageLookupByLibrary.simpleMessage("手动选择"),
+    "stabilitySelectionPrimary": m29,
+    "stabilitySelectionRejected": m30,
+    "stabilitySelectionRemoved": m31,
+    "stabilitySelectionReordered": MessageLookupByLibrary.simpleMessage(
+      "候选池重新排序",
+    ),
+    "stabilitySelectionSwitch": m32,
+    "stabilitySelectionThroughput": MessageLookupByLibrary.simpleMessage(
+      "延迟相近，实测下载更快",
+    ),
+    "stabilitySelectionTimeout": MessageLookupByLibrary.simpleMessage(
+      "连接或校验超时",
+    ),
+    "stabilitySelectionUnknownNode": MessageLookupByLibrary.simpleMessage(
+      "未知节点",
+    ),
+    "stabilitySelectionVerified": MessageLookupByLibrary.simpleMessage(
+      "链路与出口验证通过",
+    ),
+    "stabilityStopped": MessageLookupByLibrary.simpleMessage("VPN 未启动"),
+    "stabilityStoppedShort": MessageLookupByLibrary.simpleMessage("未启动"),
+    "stabilityThroughput": m33,
+    "stabilityThroughputReference": m34,
+    "stabilityTitle": MessageLookupByLibrary.simpleMessage("住宅链路稳定模式"),
+    "stabilityTlsTimeout": MessageLookupByLibrary.simpleMessage("TLS 握手失败"),
+    "stabilityType": MessageLookupByLibrary.simpleMessage("稳定择优"),
+    "stabilityUnavailable": MessageLookupByLibrary.simpleMessage("无法读取稳定模式状态"),
+    "stabilityValidating": MessageLookupByLibrary.simpleMessage("正在验证链路"),
+    "stabilityValidatingShort": MessageLookupByLibrary.simpleMessage("验证中"),
+    "stabilityVerified": MessageLookupByLibrary.simpleMessage("出口已验证"),
+    "stabilityWaiting": MessageLookupByLibrary.simpleMessage("正在验证可用主用与备用。"),
+    "stabilityWrongExit": MessageLookupByLibrary.simpleMessage("出口 IP 不符合绑定"),
     "stackMode": MessageLookupByLibrary.simpleMessage("栈模式"),
     "standard": MessageLookupByLibrary.simpleMessage("标准"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
@@ -730,7 +841,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "upload": MessageLookupByLibrary.simpleMessage("上传"),
     "url": MessageLookupByLibrary.simpleMessage("URL"),
     "urlDesc": MessageLookupByLibrary.simpleMessage("通过URL获取配置文件"),
-    "urlTip": m24,
+    "urlTip": m35,
     "useHosts": MessageLookupByLibrary.simpleMessage("使用Hosts"),
     "useSystemHosts": MessageLookupByLibrary.simpleMessage("使用系统Hosts"),
     "userAgent": MessageLookupByLibrary.simpleMessage("用户代理"),
@@ -745,8 +856,21 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "vpnTip": MessageLookupByLibrary.simpleMessage("重启VPN后改变生效"),
     "webDAVConfiguration": MessageLookupByLibrary.simpleMessage("WebDAV配置"),
+    "websiteTest": MessageLookupByLibrary.simpleMessage("测试"),
+    "websiteTestAdd": MessageLookupByLibrary.simpleMessage("添加网站"),
+    "websiteTestAll": MessageLookupByLibrary.simpleMessage("一键测试"),
+    "websiteTestCurrentRoute": MessageLookupByLibrary.simpleMessage(
+      "当前 Clash 线路 · HTTPS 响应耗时",
+    ),
+    "websiteTestFailed": MessageLookupByLibrary.simpleMessage("失败"),
+    "websiteTestInvalidUrl": MessageLookupByLibrary.simpleMessage(
+      "请输入有效的 HTTPS 地址",
+    ),
+    "websiteTestOffline": MessageLookupByLibrary.simpleMessage("请先连接"),
+    "websiteTestUrl": MessageLookupByLibrary.simpleMessage("HTTPS 地址"),
+    "websiteTests": MessageLookupByLibrary.simpleMessage("网站测试"),
     "whitelistMode": MessageLookupByLibrary.simpleMessage("白名单模式"),
-    "yearsAgo": m25,
+    "yearsAgo": m36,
     "zh_CN": MessageLookupByLibrary.simpleMessage("中文简体"),
   };
 }

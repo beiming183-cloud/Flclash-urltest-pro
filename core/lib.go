@@ -12,10 +12,8 @@ import (
 	"core/platform"
 	t "core/tun"
 	"encoding/json"
-	"errors"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/process"
-	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/log"
@@ -36,7 +34,7 @@ type TunHandler struct {
 	limit *semaphore.Weighted
 }
 
-func (th *TunHandler) start(fd int, stack, address, dns string) {
+func (th *TunHandler) start(fd int, stack, address, dns string) bool {
 	runLock.Lock()
 	defer runLock.Unlock()
 	_ = th.limit.Acquire(context.TODO(), 4)
@@ -46,9 +44,10 @@ func (th *TunHandler) start(fd int, stack, address, dns string) {
 	if tunListener != nil {
 		log.Infoln("TUN address: %v", tunListener.Address())
 		th.listener = tunListener
-		return
+		return true
 	}
 	th.clear()
+	return false
 }
 
 func (th *TunHandler) close() {
@@ -102,21 +101,7 @@ func (th *TunHandler) handleResolveProcess(source, target net.Addr) string {
 }
 
 func (th *TunHandler) initHook() {
-	dialer.DefaultSocketHook = func(network, address string, conn syscall.RawConn) error {
-		if platform.ShouldBlockConnection() {
-			return errBlocked
-		}
-		return conn.Control(func(fd uintptr) {
-			tunHandler.handleProtect(int(fd))
-		})
-	}
-	process.DefaultPackageNameResolver = func(metadata *constant.Metadata) (string, error) {
-		src, dst := metadata.RawSrcAddr, metadata.RawDstAddr
-		if src == nil || dst == nil {
-			return "", process.ErrInvalidNetwork
-		}
-		return tunHandler.handleResolveProcess(src, dst), nil
-	}
+	dialer.DefaultSocketHook, process.DefaultPackageNameResolver = makeTunHooks(th, platform.ShouldBlockConnection)
 }
 
 func (th *TunHandler) removeHook() {
@@ -126,7 +111,6 @@ func (th *TunHandler) removeHook() {
 
 var (
 	tunLock    sync.Mutex
-	errBlocked = errors.New("blocked")
 	tunHandler *TunHandler
 )
 
@@ -138,17 +122,23 @@ func handleStopTun() {
 	}
 }
 
-func handleStartTun(callback unsafe.Pointer, fd int, stack, address, dns string) {
-	handleStopTun()
+func handleStartTun(callback unsafe.Pointer, fd int, stack, address, dns string) bool {
 	tunLock.Lock()
 	defer tunLock.Unlock()
-	if fd != 0 {
-		tunHandler = &TunHandler{
-			callback: callback,
-			limit:    semaphore.NewWeighted(4),
-		}
-		tunHandler.start(fd, stack, address, dns)
+	if tunHandler != nil {
+		tunHandler.close()
+		tunHandler = nil
 	}
+	if fd <= 0 {
+		releaseObject(callback)
+		return false
+	}
+	next := &TunHandler{callback: callback, limit: semaphore.NewWeighted(4)}
+	if !next.start(fd, stack, address, dns) {
+		return false
+	}
+	tunHandler = next
+	return true
 }
 
 func handleUpdateDns(value string) {
@@ -201,7 +191,9 @@ func invokeMethod(callback unsafe.Pointer, paramsChar *C.char) {
 
 //export startTUN
 func startTUN(callback unsafe.Pointer, fd C.int, stackChar, addressChar, dnsChar *C.char) bool {
-	handleStartTun(callback, int(fd), takeCString(stackChar), takeCString(addressChar), takeCString(dnsChar))
+	if !handleStartTun(callback, int(fd), takeCString(stackChar), takeCString(addressChar), takeCString(dnsChar)) {
+		return false
+	}
 	if !isRunning {
 		handleStartListener()
 	} else {

@@ -106,7 +106,17 @@ func testStable(t *testing.T) (*Stable, *connectDialer, *connectDialer, func()) 
 
 func testStableProtocol(t *testing.T, protocol string) (*Stable, *connectDialer, *connectDialer, func()) {
 	t.Helper()
-	C.SetHomeDir(t.TempDir())
+	return testStableAt(t, protocol, t.TempDir())
+}
+
+func testStableAt(t *testing.T, protocol, home string) (*Stable, *connectDialer, *connectDialer, func()) {
+	t.Helper()
+	return testStableBinding(t, protocol, home, "IP1", "203.0.113.10", "same-account", "198.51.100.10")
+}
+
+func testStableBinding(t *testing.T, protocol, home, group, exit, account, server string) (*Stable, *connectDialer, *connectDialer, func()) {
+	t.Helper()
+	C.SetHomeDir(home)
 	a, b := &connectDialer{}, &connectDialer{}
 	proxies := map[string]C.Proxy{}
 	for i, name := range []string{"chain-a", "chain-b"} {
@@ -116,21 +126,21 @@ func testStableProtocol(t *testing.T, protocol string) (*Stable, *connectDialer,
 		}
 		relay := "RF2-Relay-airport-" + name
 		proxies[relay] = adapter.NewProxy(outbound.NewBase(outbound.BaseOption{Name: relay, Type: C.Hysteria2}))
-		p, err := outbound.NewHttp(outbound.HttpOption{BasicOption: outbound.BasicOption{DialerProxy: relay, DialerForAPI: d}, Name: name, Server: "198.51.100.10", Port: 8080, UserName: "same-account", Password: "test-password"})
+		p, err := outbound.NewHttp(outbound.HttpOption{BasicOption: outbound.BasicOption{DialerProxy: relay, DialerForAPI: d}, Name: name, Server: server, Port: 8080, UserName: account, Password: "test-password"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		proxies[name] = adapter.NewProxy(p)
 		if i == 0 && protocol == "socks5" {
 			a.protocol = protocol
-			s5, err := outbound.NewSocks5(outbound.Socks5Option{BasicOption: outbound.BasicOption{DialerProxy: relay, DialerForAPI: d}, Name: name, Server: "198.51.100.10", Port: 8080, UserName: "same-account", Password: "test-password"})
+			s5, err := outbound.NewSocks5(outbound.Socks5Option{BasicOption: outbound.BasicOption{DialerProxy: relay, DialerForAPI: d}, Name: name, Server: server, Port: 8080, UserName: account, Password: "test-password"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			proxies[name] = adapter.NewProxy(s5)
 		}
 	}
-	s, err := NewStable(GroupCommonOption{Name: "IP1", Proxies: []string{"chain-a", "chain-b"}}, StableOption{ExpectedExit: "203.0.113.10", Endpoints: []string{"198.51.100.10:8080"}}, proxies)
+	s, err := NewStable(GroupCommonOption{Name: group, Proxies: []string{"chain-a", "chain-b"}}, StableOption{ExpectedExit: exit, Endpoints: []string{net.JoinHostPort(server, "8080")}}, proxies)
 	if err != nil {
 		t.Fatal(err)
 	}

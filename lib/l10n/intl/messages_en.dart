@@ -76,9 +76,36 @@ class MessageLookup extends MessageLookupByLibrary {
 
   static String m23(count) => "${count} items have been selected";
 
-  static String m24(label) => "${label} must be a url";
+  static String m24(seconds) => "Checked ${seconds}s ago";
 
-  static String m25(count) =>
+  static String m25(seconds) => "Detailed logging: ${seconds}s remaining";
+
+  static String m26(delay, p95) =>
+      "First response (incl. setup) ${delay} ms · P95 ${p95} ms";
+
+  static String m27(delay, jitter) =>
+      "${delay} ms request latency · ${jitter} ms variation";
+
+  static String m28(node) => "Backup added · ${node}";
+
+  static String m29(node) => "Primary selected · ${node}";
+
+  static String m30(node) => "Not selected · ${node}";
+
+  static String m31(node) => "Candidate removed · ${node}";
+
+  static String m32(previous, node) =>
+      "Primary switched · ${previous} → ${node}";
+
+  static String m33(speed, delay) =>
+      "Short download ${speed} Mbps · loaded latency ${delay} ms";
+
+  static String m34(speed) =>
+      "Short download reference ${speed} Mbps · excluded from ranking";
+
+  static String m35(label) => "${label} must be a url";
+
+  static String m36(count) =>
       "${Intl.plural(count, one: '1 year ago', other: '${count} years ago')}";
 
   final messages = _notInlinedMessages(_notInlinedMessages);
@@ -959,6 +986,133 @@ class MessageLookup extends MessageLookupByLibrary {
       "Split strategy cannot be empty",
     ),
     "ssidsEmpty": MessageLookupByLibrary.simpleMessage("SSIDs is empty"),
+    "stabilityAge": m24,
+    "stabilityAuthentication": MessageLookupByLibrary.simpleMessage(
+      "Residential connection rejected",
+    ),
+    "stabilityAutomatic": MessageLookupByLibrary.simpleMessage(
+      "Automatic failover",
+    ),
+    "stabilityBackup": MessageLookupByLibrary.simpleMessage("Backup"),
+    "stabilityBudget": MessageLookupByLibrary.simpleMessage(
+      "Waiting for check budget",
+    ),
+    "stabilityCertificate": MessageLookupByLibrary.simpleMessage(
+      "Certificate verification failed",
+    ),
+    "stabilityCertificateShort": MessageLookupByLibrary.simpleMessage(
+      "Certificate error",
+    ),
+    "stabilityConnectionLogging": MessageLookupByLibrary.simpleMessage(
+      "ChatGPT connections are logged automatically. Export immediately after an error; a readable timeline is included.",
+    ),
+    "stabilityDebug": m25,
+    "stabilityDelayTimeout": MessageLookupByLibrary.simpleMessage(
+      "Chain check timed out",
+    ),
+    "stabilityExitShort": MessageLookupByLibrary.simpleMessage("Wrong exit"),
+    "stabilityExitTimeout": MessageLookupByLibrary.simpleMessage(
+      "Exit verification timed out",
+    ),
+    "stabilityExport": MessageLookupByLibrary.simpleMessage(
+      "Export diagnostics",
+    ),
+    "stabilityFailureShort": MessageLookupByLibrary.simpleMessage(
+      "Check failed",
+    ),
+    "stabilityFirstResponse": m26,
+    "stabilityFirstResponseUnknown": MessageLookupByLibrary.simpleMessage(
+      "First response (incl. setup): awaiting measurement",
+    ),
+    "stabilityMark": MessageLookupByLibrary.simpleMessage(
+      "Mark fault and record for 10 minutes",
+    ),
+    "stabilityMeasurement": MessageLookupByLibrary.simpleMessage(
+      "Request latency is measured after connection setup; first response and exit checks are shown separately.",
+    ),
+    "stabilityNoGroup": MessageLookupByLibrary.simpleMessage(
+      "No stability group. Ordinary proxy groups keep their original behavior.",
+    ),
+    "stabilityPowerSave": MessageLookupByLibrary.simpleMessage(
+      "Less frequent background checks",
+    ),
+    "stabilityPrimary": MessageLookupByLibrary.simpleMessage("Primary"),
+    "stabilityProbation": MessageLookupByLibrary.simpleMessage(
+      "Available · gathering stability evidence",
+    ),
+    "stabilityReady": MessageLookupByLibrary.simpleMessage("Connected"),
+    "stabilityRequestLatency": m27,
+    "stabilitySelectionBackup": m28,
+    "stabilitySelectionBetter": MessageLookupByLibrary.simpleMessage(
+      "Better low-latency stability score",
+    ),
+    "stabilitySelectionExpired": MessageLookupByLibrary.simpleMessage(
+      "Health verification expired; waiting for recheck",
+    ),
+    "stabilitySelectionFailed": MessageLookupByLibrary.simpleMessage(
+      "Verification failed; candidate excluded",
+    ),
+    "stabilitySelectionFailover": MessageLookupByLibrary.simpleMessage(
+      "Previous connection failed; switched to a verified candidate",
+    ),
+    "stabilitySelectionLog": MessageLookupByLibrary.simpleMessage(
+      "Candidate selection log",
+    ),
+    "stabilitySelectionLogDescription": MessageLookupByLibrary.simpleMessage(
+      "Recent 128 selections and exclusions · newest first",
+    ),
+    "stabilitySelectionLogEmpty": MessageLookupByLibrary.simpleMessage(
+      "No selections yet. Connect and wait for candidate checks.",
+    ),
+    "stabilitySelectionManual": MessageLookupByLibrary.simpleMessage(
+      "Manually selected",
+    ),
+    "stabilitySelectionPrimary": m29,
+    "stabilitySelectionRejected": m30,
+    "stabilitySelectionRemoved": m31,
+    "stabilitySelectionReordered": MessageLookupByLibrary.simpleMessage(
+      "Candidate pool reordered",
+    ),
+    "stabilitySelectionSwitch": m32,
+    "stabilitySelectionThroughput": MessageLookupByLibrary.simpleMessage(
+      "Similar latency, stronger measured download speed",
+    ),
+    "stabilitySelectionTimeout": MessageLookupByLibrary.simpleMessage(
+      "Connection or verification timed out",
+    ),
+    "stabilitySelectionUnknownNode": MessageLookupByLibrary.simpleMessage(
+      "Unknown node",
+    ),
+    "stabilitySelectionVerified": MessageLookupByLibrary.simpleMessage(
+      "Chain and exit verification passed",
+    ),
+    "stabilityStopped": MessageLookupByLibrary.simpleMessage("VPN stopped"),
+    "stabilityStoppedShort": MessageLookupByLibrary.simpleMessage("Stopped"),
+    "stabilityThroughput": m33,
+    "stabilityThroughputReference": m34,
+    "stabilityTitle": MessageLookupByLibrary.simpleMessage(
+      "Residential stability",
+    ),
+    "stabilityTlsTimeout": MessageLookupByLibrary.simpleMessage(
+      "TLS handshake failed",
+    ),
+    "stabilityType": MessageLookupByLibrary.simpleMessage("Stable choice"),
+    "stabilityUnavailable": MessageLookupByLibrary.simpleMessage(
+      "Unable to read stability status",
+    ),
+    "stabilityValidating": MessageLookupByLibrary.simpleMessage(
+      "Verifying chain",
+    ),
+    "stabilityValidatingShort": MessageLookupByLibrary.simpleMessage(
+      "Verifying",
+    ),
+    "stabilityVerified": MessageLookupByLibrary.simpleMessage("Exit verified"),
+    "stabilityWaiting": MessageLookupByLibrary.simpleMessage(
+      "Verifying a usable primary and backups.",
+    ),
+    "stabilityWrongExit": MessageLookupByLibrary.simpleMessage(
+      "Exit IP does not match",
+    ),
     "stackMode": MessageLookupByLibrary.simpleMessage("Stack mode"),
     "standard": MessageLookupByLibrary.simpleMessage("Standard"),
     "standardModeDesc": MessageLookupByLibrary.simpleMessage(
@@ -1038,7 +1192,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "urlDesc": MessageLookupByLibrary.simpleMessage(
       "Obtain profile through URL",
     ),
-    "urlTip": m24,
+    "urlTip": m35,
     "useHosts": MessageLookupByLibrary.simpleMessage("Use hosts"),
     "useSystemHosts": MessageLookupByLibrary.simpleMessage("Use system hosts"),
     "userAgent": MessageLookupByLibrary.simpleMessage("User-Agent"),
@@ -1057,8 +1211,21 @@ class MessageLookup extends MessageLookupByLibrary {
     "webDAVConfiguration": MessageLookupByLibrary.simpleMessage(
       "WebDAV configuration",
     ),
+    "websiteTest": MessageLookupByLibrary.simpleMessage("Test"),
+    "websiteTestAdd": MessageLookupByLibrary.simpleMessage("Add website"),
+    "websiteTestAll": MessageLookupByLibrary.simpleMessage("Test all"),
+    "websiteTestCurrentRoute": MessageLookupByLibrary.simpleMessage(
+      "Current Clash route · HTTPS response time",
+    ),
+    "websiteTestFailed": MessageLookupByLibrary.simpleMessage("Failed"),
+    "websiteTestInvalidUrl": MessageLookupByLibrary.simpleMessage(
+      "Enter a valid HTTPS URL",
+    ),
+    "websiteTestOffline": MessageLookupByLibrary.simpleMessage("Connect first"),
+    "websiteTestUrl": MessageLookupByLibrary.simpleMessage("HTTPS URL"),
+    "websiteTests": MessageLookupByLibrary.simpleMessage("Website tests"),
     "whitelistMode": MessageLookupByLibrary.simpleMessage("Whitelist mode"),
-    "yearsAgo": m25,
+    "yearsAgo": m36,
     "zh_CN": MessageLookupByLibrary.simpleMessage("Simplified Chinese"),
   };
 }

@@ -15,13 +15,21 @@ type SocketControl func(network, address string, conn syscall.RawConn) error
 var DefaultSocketHook SocketControl
 
 func socketHookToToDialer(dialer *net.Dialer) {
+	hook := DefaultSocketHook
 	addControlToDialer(dialer, func(ctx context.Context, network, address string, c syscall.RawConn) error {
-		return DefaultSocketHook(network, address, c)
+		if hook == nil {
+			return nil
+		}
+		return hook(network, address, c)
 	})
 }
 
 func socketHookToListenConfig(lc *net.ListenConfig) {
+	hook := DefaultSocketHook
 	addControlToListenConfig(lc, func(ctx context.Context, network, address string, c syscall.RawConn) error {
-		return DefaultSocketHook(network, address, c)
+		if hook == nil {
+			return nil
+		}
+		return hook(network, address, c)
 	})
 }
