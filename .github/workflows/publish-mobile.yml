@@ -69,7 +69,8 @@ jobs:
           PY
           version=$(sed -nE 's/^version:[[:space:]]*0\.8\.96\+([0-9]+)[[:space:]]*$/\1/p' pubspec.yaml)
           [[ "$version" =~ ^20[0-9]{8}$ ]]
-          sdk=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$sdk/apksigner"
           "$sdk/aapt2" dump badging candidate.apk > badging.txt
           grep -F "package: name='com.beiming.flclash.urltestpro096.dev' versionCode='$version' versionName='0.8.96'" badging.txt
           python3 - <<'PY'
@@ -90,12 +91,15 @@ jobs:
           STORE_PASS: ${{ secrets.FLCLASH_STORE_PASS }}
         run: |
           set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
           umask 077
           key=$(mktemp)
           trap 'rm -f "$key"' EXIT
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$key"
-          "$SDK_TOOLS/apksigner" sign --ks "$key" --ks-pass env:STORE_PASS --key-pass env:STORE_PASS --out "$APK" candidate.apk
-          "$SDK_TOOLS/apksigner" verify --verbose --print-certs "$APK" > cert.txt
+          "$SDK_TOOLS/zipalign" -P 16 -f 4 candidate.apk aligned.apk
+          "$SDK_TOOLS/apksigner" sign --ks "$key" --ks-pass env:STORE_PASS --key-pass env:STORE_PASS --out "$APK" aligned.apk
+          "$SDK_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee cert.txt
           grep -Fx 'Signer #1 certificate SHA-256 digest: b63b2557ca6ee673514ece8652782154050277800bda2336a1b007237ff5e7b7' cert.txt
           "$SDK_TOOLS/zipalign" -c -P 16 4 "$APK"
           sha256sum "$APK" > SHA256SUMS.txt
