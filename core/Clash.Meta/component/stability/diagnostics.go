@@ -28,6 +28,9 @@ const LogLimit = 1 << 20
 const ExportLimit = 2 << 20
 
 type Event struct {
+	CandidateCount  int       `json:"candidateCount,omitempty"`
+	HintCount       int       `json:"usableHistoryHints,omitempty"`
+	ExitCheckMs     int64     `json:"exitCheckTotalMs,omitempty"`
 	Target          string    `json:"targetId,omitempty"`
 	Attempts        int       `json:"attemptCount,omitempty"`
 	RemainingMs     int64     `json:"remainingDeadlineMs,omitempty"`
@@ -56,7 +59,18 @@ type Event struct {
 	Service         string    `json:"serviceTag,omitempty"`
 }
 
+type startupTrace struct {
+	Started      Event   `json:"started"`
+	Candidates   *Event  `json:"firstCandidateScan,omitempty"`
+	FirstProbe   *Event  `json:"firstProbe,omitempty"`
+	FirstPrimary *Event  `json:"firstPrimary,omitempty"`
+	FirstDial    *Event  `json:"firstSuccessfulDial,omitempty"`
+	Probes       []Event `json:"initialProbeResults,omitempty"`
+	Omitted      int     `json:"omittedProbeResults,omitempty"`
+}
+
 type Journal struct {
+	startups     map[string]*startupTrace
 	mu           sync.Mutex
 	dir          string
 	key          []byte
@@ -76,7 +90,7 @@ var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_f
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
-	for _, name := range []string{"dial_final", "dial_attempt", "empty_enter", "empty_exit"} {
+	for _, name := range []string{"dial_final", "dial_attempt", "empty_enter", "empty_exit", "startup_begin", "startup_candidates", "startup_probe_result"} {
 		events[name] = true
 	}
 	for _, name := range []string{"no_eligible_route", "route_recovered", "target_timeout", "candidate_backoff", "caller_deadline"} {
@@ -349,6 +363,7 @@ func (j *Journal) Record(event Event) error {
 	}
 	event.Time = now.UTC()
 	event.MonotonicMs = now.Sub(j.start).Milliseconds()
+	j.trackStartupLocked(event)
 	j.countMinuteLocked(event)
 	if (event.Event == "dial_result" || event.Event == "dial_final" || event.Event == "dial_attempt") && event.OK && !now.Before(j.debugUntil) {
 		return nil
@@ -371,6 +386,55 @@ func (j *Journal) Record(event Event) error {
 	}
 	j.last = &event
 	return nil
+}
+
+func (j *Journal) trackStartupLocked(e Event) {
+	if e.Event == "startup_begin" {
+		if j.startups == nil {
+			j.startups = make(map[string]*startupTrace)
+		}
+		if len(j.startups) >= 16 && j.startups[e.Group] == nil {
+			var oldest string
+			for k, t := range j.startups {
+				if oldest == "" || t.Started.Time.Before(j.startups[oldest].Started.Time) {
+					oldest = k
+				}
+			}
+			delete(j.startups, oldest)
+		}
+		j.startups[e.Group] = &startupTrace{Started: e}
+		return
+	}
+	t := j.startups[e.Group]
+	if t == nil {
+		return
+	}
+	switch e.Event {
+	case "startup_candidates":
+		if t.Candidates == nil {
+			t.Candidates = &e
+		}
+	case "startup_probe":
+		if t.FirstProbe == nil {
+			t.FirstProbe = &e
+		}
+	case "primary_changed":
+		if t.FirstPrimary == nil && e.OK {
+			t.FirstPrimary = &e
+		}
+	case "dial_final":
+		if t.FirstDial == nil && e.OK {
+			t.FirstDial = &e
+		}
+	case "startup_probe_result":
+		if t.FirstPrimary == nil {
+			if len(t.Probes) < 32 {
+				t.Probes = append(t.Probes, e)
+			} else {
+				t.Omitted++
+			}
+		}
+	}
 }
 
 func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
@@ -457,7 +521,7 @@ func (j *Journal) Export(live ...map[string]Snapshot) ([]byte, error) {
 		for _, entry := range []struct {
 			name string
 			data any
-		}{{"manifest.json", manifest}, {"summary.json", counts}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": C.Version, "coreVersion": C.Version, "coreBuildTime": C.BuildTime, "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
+		}{{"manifest.json", manifest}, {"summary.json", counts}, {"startup.json", j.startups}, {"environment.json", map[string]any{"scope": "native-core", "containsProfiles": false, "appBaseline": "0.8.96", "diagnosticBuild": C.Version, "coreVersion": C.Version, "coreBuildTime": C.BuildTime, "businessObservation": "passive-tcp-no-payload"}}, {"states.json", states}, {"tls.json", map[string]any{"verification": "system-trust", "rawCertificates": false, "nodes": j.tls}}, {"chatgpt-active.json", active}} {
 			w, err := z.Create(entry.name)
 			if err != nil {
 				return nil, err

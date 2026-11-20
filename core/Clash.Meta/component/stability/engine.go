@@ -21,18 +21,19 @@ type Candidate struct {
 }
 
 type Sample struct {
-	Epoch         uint64
-	OK            bool
-	TLS           bool
-	Exit          bool
-	Hard          bool
-	Latency       time.Duration
-	FirstResponse time.Duration
-	Error         string
-	Phase         string
-	Service       string
-	TLSInfo       []TLSInfo
-	FailureWait   time.Duration
+	ProbeDial, ProbeTLS, ExitCheck time.Duration
+	Epoch                          uint64
+	OK                             bool
+	TLS                            bool
+	Exit                           bool
+	Hard                           bool
+	Latency                        time.Duration
+	FirstResponse                  time.Duration
+	Error                          string
+	Phase                          string
+	Service                        string
+	TLSInfo                        []TLSInfo
+	FailureWait                    time.Duration
 }
 
 type TLSInfo struct {

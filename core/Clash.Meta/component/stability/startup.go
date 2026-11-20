@@ -39,6 +39,11 @@ func (e *Engine) rememberStartup(s *Stats) {
 }
 
 func (e *Engine) StartupCandidates() []string {
+	ids, _ := e.StartupCandidatesWithHints()
+	return ids
+}
+
+func (e *Engine) StartupCandidatesWithHints() ([]string, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now := e.now()
@@ -109,5 +114,11 @@ func (e *Engine) StartupCandidates() []string {
 			}
 		}
 	}
-	return fair
+	hits := 0
+	for _, id := range fair {
+		if !math.IsInf(score(id), 1) {
+			hits++
+		}
+	}
+	return fair, hits
 }

@@ -58,8 +58,11 @@ func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 	// all waiting browser requests. Never scan the entire pool on each wakeup.
 	s.recoveryNext = now.Add(100 * time.Millisecond)
 	s.mu.Unlock()
-	ids := s.engine.StartupCandidates()
+	ids, hints := s.engine.StartupCandidatesWithHints()
 	state := s.engine.Snapshot()
+	if initial && s.journal != nil {
+		_ = s.journal.Record(stability.Event{Event: "startup_candidates", Group: s.groupID, Epoch: state.Epoch, CandidateCount: len(ids), HintCount: hints, OK: true})
+	}
 	recent := make(map[string]bool)
 	for _, node := range state.Nodes {
 		if !node.LastCheck.IsZero() && now.Sub(node.LastCheck) < 5*time.Second {

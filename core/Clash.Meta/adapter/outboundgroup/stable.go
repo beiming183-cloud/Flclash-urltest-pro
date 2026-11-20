@@ -314,6 +314,9 @@ func (s *Stable) Start() {
 	if s.cancel != nil {
 		return
 	}
+	if s.journal != nil {
+		_ = s.journal.Record(stability.Event{Event: "startup_begin", Group: s.groupID, OK: true})
+	}
 	ordinaryRecoveryStart.Store(time.Now().UnixNano())
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	ctx := s.ctx
@@ -484,6 +487,9 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 			}
 		}
 		sample = s.probe(ctx, p, s.expected, verify, state.Epoch, reserve)
+		if quick && s.journal != nil {
+			_ = s.journal.Record(stability.Event{Event: "startup_probe_result", Group: s.groupID, Node: id, Epoch: state.Epoch, OK: sample.OK, Reason: sample.Error, DialMs: sample.ProbeDial.Milliseconds(), HandshakeMs: sample.ProbeTLS.Milliseconds(), ExitCheckMs: sample.ExitCheck.Milliseconds(), LatencyMs: time.Since(probeStarted).Milliseconds()})
+		}
 	}
 	// A short search deadline means "not yet verified", not proof of a bad
 	// route. Retain it for the slower, independent recovery pass.
