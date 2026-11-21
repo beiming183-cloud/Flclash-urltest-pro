@@ -75,3 +75,27 @@ func TestRefillHasIndependentRateBudget(t *testing.T) {
 		t.Fatal("refill must reserve room for a full verification")
 	}
 }
+
+func TestFirstStandbyReserveOnlyAfterPrimary(t *testing.T) {
+	e, _ := stability.New([]stability.Candidate{{ID: "a", Relay: "r1"}, {ID: "b", Relay: "r2"}}, nil)
+	for e.ReservePriority(stability.RecoveryProbe) {
+	}
+	state := e.Snapshot()
+	if refillBudgetAvailable(state) {
+		t.Fatal("cold scan used first-standby reserve")
+	}
+	e.Record("a", stability.Sample{Epoch: state.Epoch, OK: true, TLS: true, Exit: true, Latency: time.Millisecond}, true)
+	state = e.Snapshot()
+	_, _, priority, cost := stableProbePolicy(state, "b", true, true, true)
+	if !refillBudgetAvailable(state) || priority != stability.StandbyProbe || cost != 2 {
+		t.Fatal("standby budget unavailable after restoring primary", state.Active, priority)
+	}
+	consume, release, ok := e.LeaseProbe(priority, cost)
+	if !ok || !consume() || !consume() {
+		t.Fatal("reserve cannot fund full verification")
+	}
+	release()
+	if refillBudgetAvailable(e.Snapshot()) {
+		t.Fatal("standby budget unbounded")
+	}
+}

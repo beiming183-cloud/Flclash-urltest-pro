@@ -111,7 +111,7 @@ func TestQualificationWaitTimeoutHasDistinctDiagnosticReason(t *testing.T) {
 }
 
 func TestRecoveryConfirmationIndependentOfCandidateCount(t *testing.T) {
-	for _, count := range []int{16, 180, 1000} {
+	for _, count := range []int{16, 180, 267, 1000} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			if count > stability.MaxCandidates {
 				t.Skip("stress overlay raises only the admission limit for this case")
@@ -133,7 +133,7 @@ func TestRecoveryConfirmationIndependentOfCandidateCount(t *testing.T) {
 }
 
 func TestKnownEightSecondQualificationRecoversTwoAccountsWithinTenSeconds(t *testing.T) {
-	for _, count := range []int{16, 180, 1000} {
+	for _, count := range []int{16, 180, 267, 1000} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			if count > stability.MaxCandidates {
 				t.Skip("stress overlay raises only the admission limit for this case")
@@ -205,5 +205,72 @@ func TestQualifiedBackupDispatchAfterFailedConnectUnderThreeHundredMilliseconds(
 		t.Fatal("failed CONNECT delayed the qualified standby", delay)
 	} else {
 		t.Logf("qualified backup dispatch after failure=%s", delay)
+	}
+}
+
+func TestMobileFirstBusinessWith267Candidates(t *testing.T) {
+	for _, historicalWinner := range []bool{true, false} {
+		t.Run(fmt.Sprint("history-", historicalWinner), func(t *testing.T) {
+			s, _ := recoveryAcceptanceStable(t, 267, time.Second)
+			candidates := make([]stability.Candidate, 0, 267)
+			for _, n := range s.engine.Snapshot().Nodes {
+				candidates = append(candidates, n.Candidate)
+			}
+			clock := time.Now().Add(-30 * time.Hour)
+			e, err := stability.New(candidates, func() time.Time { return clock })
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldOrder := s.engine.StartupCandidates()
+			goodProxy := s.byID[oldOrder[0]]
+			s.engine = e
+			past := candidates[200].ID
+			e.Record(past, stability.Sample{Epoch: e.Snapshot().Epoch, OK: true, TLS: true, Exit: true, Latency: time.Second}, true)
+			clock = clock.Add(30 * time.Hour)
+			e.Invalidate()
+			wave := e.StartupCandidates()
+			if wave[0] != past || len(e.Attempts()) != 0 {
+				t.Fatal("history must change probe order only")
+			}
+			winner := past
+			if !historicalWinner {
+				for _, c := range candidates {
+					if c.Airport != candidates[200].Airport {
+						winner = c.ID
+						break
+					}
+				}
+			}
+			s.byID[oldOrder[0]], s.byID[winner] = s.byID[winner], goodProxy
+			s.probe = func(ctx context.Context, p C.Proxy, _ string, verify bool, epoch uint64, _ func() bool) stability.Sample {
+				if p != goodProxy {
+					<-ctx.Done()
+					return stability.Sample{Epoch: epoch, Error: "exit_query_timeout"}
+				}
+				if !verify {
+					t.Error("missing exit check")
+				}
+				select {
+				case <-time.After(1300 * time.Millisecond):
+					return stability.Sample{Epoch: epoch, OK: true, TLS: true, Exit: true, Latency: 1300 * time.Millisecond}
+				case <-ctx.Done():
+					return stability.Sample{Epoch: epoch, Error: "cancelled"}
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			meta := &C.Metadata{NetWork: C.TCP, Type: C.INNER}
+			meta.SetRemoteAddress("example.com:443")
+			started := time.Now()
+			conn, err := s.DialContext(ctx, meta)
+			if err != nil {
+				t.Fatal("first business connection", err)
+			}
+			conn.Close()
+			if e.Snapshot().Primary != winner {
+				t.Fatal("unexpected primary", e.Snapshot().Primary, winner)
+			}
+			t.Logf("one usable of 267, first business connection %v", time.Since(started))
+		})
 	}
 }

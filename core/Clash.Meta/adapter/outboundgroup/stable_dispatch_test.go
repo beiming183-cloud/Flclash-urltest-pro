@@ -100,3 +100,34 @@ func TestStableDispatchThreeGroupsProgressWithThousandQueuedJobs(t *testing.T) {
 		t.Fatal("one account starved behind other recurring groups", groups)
 	}
 }
+
+func TestOutageSearchAdmissionAndBusinessPriority(t *testing.T) {
+	d := newStableProbeDispatch(3)
+	d.outageLimit = 6
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for i := 0; i < 4; i++ {
+		release, ok := d.trySearch(ctx, "idle", cancel, true)
+		if !ok {
+			t.Fatal("outage exploration lost capacity", i)
+		}
+		defer release()
+	}
+	if finish, ok := d.trySearch(ctx, "idle", cancel, true); ok {
+		finish()
+		t.Fatal("search took the confirmation slot")
+	}
+	if len(d.queue) != 0 || d.searchCapacity("idle", true) != 0 {
+		t.Fatal("full search created a backlog")
+	}
+	d.served[1]["IP2"] = 100
+	waitForBusiness := d.businessWait("IP2")
+	defer waitForBusiness()
+	for _, group := range []string{"IP1", "IP1", "IP2"} {
+		d.queue = append(d.queue, &stableProbeJob{group: group, class: 1, outage: true, ctx: ctx, cancel: cancel, ready: make(chan struct{})})
+	}
+	d.dispatchLocked()
+	if len(d.queue) != 1 || d.queue[0].group != "IP1" || len(d.active) != 6 {
+		t.Fatal("business did not get first available confirmation")
+	}
+}

@@ -28,6 +28,8 @@ const LogLimit = 1 << 20
 const ExportLimit = 2 << 20
 
 type Event struct {
+	ProbeID         uint64    `json:"probeId,omitempty"`
+	QueueMs         int64     `json:"queueMs,omitempty"`
 	CandidateCount  int       `json:"candidateCount,omitempty"`
 	HintCount       int       `json:"usableHistoryHints,omitempty"`
 	ExitCheckMs     int64     `json:"exitCheckTotalMs,omitempty"`
@@ -86,7 +88,7 @@ type Journal struct {
 	minutes      map[string]*minuteAccumulator
 }
 
-var reasons = map[string]bool{"": true, "promote": true, "manual": true, "dial_failover": true, "network_changed": true, "network_offline": true, "relay_dial_timeout": true, "connect_rejected": true, "residential_auth": true, "tls_aborted": true, "cert_untrusted": true, "cert_hostname": true, "cert_expired": true, "unexpected_exit": true, "service_failed": true, "cancelled": true, "budget_exhausted": true, "unknown": true, "stopped": true}
+var reasons = map[string]bool{"service_start": true, "": true, "promote": true, "manual": true, "dial_failover": true, "network_changed": true, "network_offline": true, "relay_dial_timeout": true, "connect_rejected": true, "residential_auth": true, "tls_aborted": true, "cert_untrusted": true, "cert_hostname": true, "cert_expired": true, "unexpected_exit": true, "service_failed": true, "cancelled": true, "budget_exhausted": true, "unknown": true, "stopped": true}
 var events = map[string]bool{"probe": true, "switch": true, "cooldown": true, "promote": true, "network_changed": true, "tls_check": true, "budget_exhausted": true, "user_mark": true, "snapshot": true}
 
 func init() {
@@ -351,7 +353,7 @@ func (j *Journal) Record(event Event) error {
 		j.dropped++
 		return nil
 	}
-	if event.Target != "" && !validID(event.Target) || event.Attempts < 0 || event.Attempts > 3 || event.RemainingMs < 0 || event.RemainingMs > 600000 || (event.ProbeClass != "" && event.ProbeClass != "maintenance" && event.ProbeClass != "recovery" && event.ProbeClass != "availability_search") {
+	if event.Target != "" && !validID(event.Target) || event.Attempts < 0 || event.Attempts > 3 || event.RemainingMs < 0 || event.RemainingMs > 600000 || (event.ProbeClass != "" && event.ProbeClass != "maintenance" && event.ProbeClass != "recovery" && event.ProbeClass != "availability_search" && event.ProbeClass != "first_standby") {
 		j.dropped++
 		return nil
 	}
@@ -375,7 +377,7 @@ func (j *Journal) Record(event Event) error {
 		event.Event = "snapshot"
 		j.lastSnapshot = now
 	}
-	if j.last != nil && !event.OK && event.Group == j.last.Group && event.Target == j.last.Target && event.Event == j.last.Event && event.Reason == j.last.Reason && event.Node == j.last.Node && event.Epoch == j.last.Epoch && now.Sub(j.last.Time) < 3*time.Second {
+	if j.last != nil && !event.OK && event.Group == j.last.Group && event.Target == j.last.Target && event.Event == j.last.Event && event.Reason == j.last.Reason && event.Node == j.last.Node && event.ProbeID == j.last.ProbeID && event.Epoch == j.last.Epoch && now.Sub(j.last.Time) < 3*time.Second {
 		j.last.Repeated++
 		return nil
 	}

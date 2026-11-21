@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
@@ -20,6 +21,7 @@ import (
 )
 
 var OnStableRouteChange = func() {}
+var startupProbeSequence atomic.Uint64
 var journalMu sync.Mutex
 var sharedJournal *stability.Journal
 var journalHome string
@@ -48,6 +50,7 @@ type StableOption struct {
 }
 
 type Stable struct {
+	networkTransition    sync.Mutex
 	routeNotificationMu  sync.Mutex
 	routeNotificationKey string
 	*GroupBase
@@ -306,7 +309,9 @@ func (s *Stable) DiagnosticState() (string, stability.Snapshot) {
 	return s.groupID, state
 }
 
-func (s *Stable) Start() {
+func (s *Stable) Start() { s.start("service_start") }
+
+func (s *Stable) start(reason string) {
 	s.transition.Lock()
 	defer s.transition.Unlock()
 	s.mu.Lock()
@@ -315,7 +320,7 @@ func (s *Stable) Start() {
 		return
 	}
 	if s.journal != nil {
-		_ = s.journal.Record(stability.Event{Event: "startup_begin", Group: s.groupID, OK: true})
+		_ = s.journal.Record(stability.Event{Event: "startup_begin", Reason: reason, Group: s.groupID, OK: true})
 	}
 	ordinaryRecoveryStart.Store(time.Now().UnixNano())
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -360,6 +365,8 @@ func (s *Stable) Stop() {
 func (s *Stable) Close() error { s.Stop(); return nil }
 
 func (s *Stable) NetworkChanged(key string, online bool) {
+	s.networkTransition.Lock()
+	defer s.networkTransition.Unlock()
 	s.mu.Lock()
 	unchanged := s.networkKey == key && s.online == online && (s.cancel != nil) == online
 	s.networkKey, s.online = key, online
@@ -375,7 +382,7 @@ func (s *Stable) NetworkChanged(key string, online bool) {
 	s.Stop()
 	s.engine.SwitchNetwork(s.journal.ID("network:" + key))
 	if online {
-		s.Start()
+		s.start("network_changed")
 	}
 	s.log("network_changed", "network_changed", "", false, 0)
 	s.notifyRouteChange()
@@ -414,7 +421,7 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	_, _, queuedPriority, _ := stableProbePolicy(queuedState, id, verify, quick, fault)
 	if queuedPriority == stability.MaintenanceProbe {
 		class = 0
-	} else if queuedPriority == stability.RecoveryProbe {
+	} else if queuedPriority == stability.RecoveryProbe || queuedPriority == stability.StandbyProbe {
 		class = 1
 	}
 	if search, _ := ctx.Value(stableSearchKey{}).(bool); search {
@@ -423,15 +430,31 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 	if quality, _ := ctx.Value(stableQualityKey{}).(bool); quality {
 		class = 2
 	}
-	releaseDispatch, dispatchErr := stableBackgroundDispatch.acquire(ctx, s.groupID, class, cancel, len(queuedState.Active) == 0)
-	if dispatchErr != nil {
-		return stability.Sample{Error: "cancelled"}, dispatchErr
+	queuedAt := time.Now()
+	var traceID uint64
+	traceStartup := len(queuedState.Active) == 0 && quick && s.journal != nil
+	if traceStartup {
+		traceID = startupProbeSequence.Add(1)
+		_ = s.journal.Record(stability.Event{Event: "startup_probe", Reason: "startup_availability", Group: s.groupID, Node: id, Epoch: queuedState.Epoch, ProbeID: traceID})
 	}
-	defer releaseDispatch()
+	recordQueueCancel := func() {
+		if traceStartup {
+			_ = s.journal.Record(stability.Event{Event: "startup_probe_result", Reason: "cancelled", Group: s.groupID, Node: id, Epoch: queuedState.Epoch, ProbeID: traceID, QueueMs: time.Since(queuedAt).Milliseconds()})
+		}
+	}
+	if admitted, _ := ctx.Value(admittedSearchKey{}).(bool); !admitted {
+		releaseDispatch, dispatchErr := stableBackgroundDispatch.acquire(ctx, s.groupID, class, cancel, len(queuedState.Active) == 0)
+		if dispatchErr != nil {
+			recordQueueCancel()
+			return stability.Sample{Error: "cancelled"}, dispatchErr
+		}
+		defer releaseDispatch()
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
 	case <-ctx.Done():
+		recordQueueCancel()
 		return stability.Sample{}, ctx.Err()
 	}
 	state := s.engine.Snapshot()
@@ -488,7 +511,7 @@ func (s *Stable) probeCandidate(ctx context.Context, id string, verify, elect, f
 		}
 		sample = s.probe(ctx, p, s.expected, verify, state.Epoch, reserve)
 		if quick && s.journal != nil {
-			_ = s.journal.Record(stability.Event{Event: "startup_probe_result", Group: s.groupID, Node: id, Epoch: state.Epoch, OK: sample.OK, Reason: sample.Error, DialMs: sample.ProbeDial.Milliseconds(), HandshakeMs: sample.ProbeTLS.Milliseconds(), ExitCheckMs: sample.ExitCheck.Milliseconds(), LatencyMs: time.Since(probeStarted).Milliseconds()})
+			_ = s.journal.Record(stability.Event{Event: "startup_probe_result", ProbeID: traceID, QueueMs: probeStarted.Sub(queuedAt).Milliseconds(), Group: s.groupID, Node: id, Epoch: state.Epoch, OK: sample.OK, Reason: sample.Error, DialMs: sample.ProbeDial.Milliseconds(), HandshakeMs: sample.ProbeTLS.Milliseconds(), ExitCheckMs: sample.ExitCheck.Milliseconds(), LatencyMs: time.Since(probeStarted).Milliseconds()})
 		}
 	}
 	// A short search deadline means "not yet verified", not proof of a bad

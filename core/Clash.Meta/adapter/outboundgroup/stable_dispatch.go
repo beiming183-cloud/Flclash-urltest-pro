@@ -26,6 +26,7 @@ type stableProbeDispatch struct {
 	queue       []*stableProbeJob
 	active      map[*stableProbeJob]bool
 	served      [3]map[string]uint64
+	waiting     map[string]int
 	sequence    uint64
 	completed   uint64
 	preempted   uint64
@@ -33,7 +34,7 @@ type stableProbeDispatch struct {
 }
 
 func newStableProbeDispatch(limit int) *stableProbeDispatch {
-	d := &stableProbeDispatch{limit: limit, active: map[*stableProbeJob]bool{}}
+	d := &stableProbeDispatch{limit: limit, waiting: map[string]int{}, active: map[*stableProbeJob]bool{}}
 	for i := range d.served {
 		d.served[i] = map[string]uint64{}
 	}
@@ -73,6 +74,74 @@ func (d *stableProbeDispatch) effectiveLimitLocked() int {
 	return d.limit
 }
 
+func (d *stableProbeDispatch) businessWait(group string) func() {
+	d.mu.Lock()
+	d.waiting[group]++
+	d.mu.Unlock()
+	return func() {
+		d.mu.Lock()
+		d.waiting[group]--
+		if d.waiting[group] == 0 {
+			delete(d.waiting, group)
+		}
+		d.mu.Unlock()
+	}
+}
+
+func outageSearchLimit(limit int) int {
+	if limit >= 4 {
+		return limit - 2
+	}
+	if limit > 1 {
+		return limit - 1
+	}
+	return limit
+}
+
+func (d *stableProbeDispatch) searchCapacity(group string, outage bool) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	limit := d.effectiveLimitLocked()
+	if outage && d.outageLimit > limit {
+		limit = d.outageLimit
+	}
+	count := len(d.active)
+	searches := 0
+	for job := range d.active {
+		if job.class == 2 {
+			searches++
+		}
+	}
+	if outage && searches >= outageSearchLimit(limit) {
+		return 0
+	}
+	for _, job := range d.queue {
+		if job.ctx.Err() == nil {
+			count++
+		}
+	}
+	if count >= limit {
+		return 0
+	}
+	free := limit - count
+	if len(d.waiting) > 0 && d.waiting[group] == 0 && free > 1 {
+		return 1
+	}
+	return free
+}
+
+func (d *stableProbeDispatch) prefers(job, other *stableProbeJob) bool {
+	if job.class != other.class {
+		return job.class < other.class
+	}
+	waiting := job.outage && d.waiting[job.group] > 0
+	otherWaiting := other.outage && d.waiting[other.group] > 0
+	if waiting != otherWaiting {
+		return waiting
+	}
+	return d.served[job.class][job.group] < d.served[other.class][other.group]
+}
+
 func (d *stableProbeDispatch) dispatchLocked() {
 	limit := d.effectiveLimitLocked()
 	for len(d.active) < limit {
@@ -80,6 +149,17 @@ func (d *stableProbeDispatch) dispatchLocked() {
 		for i, job := range d.queue {
 			if job.ctx.Err() != nil {
 				continue
+			}
+			if job.class == 2 && job.outage {
+				optional := 0
+				for running := range d.active {
+					if running.class == 2 {
+						optional++
+					}
+				}
+				if optional >= outageSearchLimit(limit) {
+					continue
+				}
 			}
 			if job.class == 1 {
 				n := 0
@@ -92,8 +172,7 @@ func (d *stableProbeDispatch) dispatchLocked() {
 					continue
 				}
 			}
-			if best < 0 || job.class < d.queue[best].class ||
-				job.class == d.queue[best].class && d.served[job.class][job.group] < d.served[job.class][d.queue[best].group] {
+			if best < 0 || d.prefers(job, d.queue[best]) {
 				best = i
 			}
 		}
@@ -111,6 +190,27 @@ func (d *stableProbeDispatch) dispatchLocked() {
 		}
 		close(job.ready)
 	}
+}
+
+type admittedSearchKey struct{}
+
+func (d *stableProbeDispatch) trySearch(ctx context.Context, group string, cancel context.CancelFunc, outage bool) (func(), bool) {
+	job := &stableProbeJob{group: group, class: 2, ctx: ctx, cancel: cancel, ready: make(chan struct{}), queued: time.Now(), outage: outage}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.queue = append(d.queue, job)
+	d.dispatchLocked()
+	if !job.started {
+		d.queue = d.queue[:len(d.queue)-1]
+		return nil, false
+	}
+	return func() {
+		d.mu.Lock()
+		delete(d.active, job)
+		d.completed++
+		d.dispatchLocked()
+		d.mu.Unlock()
+	}, true
 }
 
 func (d *stableProbeDispatch) acquire(ctx context.Context, group string, class int, cancel context.CancelFunc, outage ...bool) (func(), error) {
@@ -131,7 +231,7 @@ func (d *stableProbeDispatch) acquire(ctx context.Context, group string, class i
 	}
 	if !job.started && class < 2 && eligible {
 		for running := range d.active {
-			if running.class == 2 && !running.preempted {
+			if running.class == 2 && !running.preempted && !(running.outage && class == 1) {
 				running.preempted = true
 				d.preempted++
 				running.cancel()

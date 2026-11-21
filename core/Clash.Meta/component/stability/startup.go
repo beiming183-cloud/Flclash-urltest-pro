@@ -73,12 +73,23 @@ func (e *Engine) StartupCandidatesWithHints() ([]string, int) {
 	score := func(id string) float64 {
 		hint, ok := e.startup[id]
 		age := now.Sub(hint.VerifiedAt)
-		if !ok || hint.Error != "" || age < 0 || age > 24*time.Hour {
+		if !ok || hint.Error != "" || age < 0 || age > 72*time.Hour {
 			return math.Inf(1)
+		}
+		if age > 24*time.Hour {
+			return hint.Score * (1 + age.Hours()/24)
 		}
 		return hint.Score
 	}
-	sort.SliceStable(ids, func(i, j int) bool { return score(ids[i]) < score(ids[j]) })
+	sort.SliceStable(ids, func(i, j int) bool {
+		a, b := ids[i], ids[j]
+		recentA := !math.IsInf(score(a), 1) && now.Sub(e.startup[a].VerifiedAt) <= 24*time.Hour
+		recentB := !math.IsInf(score(b), 1) && now.Sub(e.startup[b].VerifiedAt) <= 24*time.Hour
+		if recentA != recentB {
+			return recentA
+		}
+		return score(a) < score(b)
+	})
 	// Prefer independent failure domains in the first recovery wave, keeping
 	// the complete list available for later fair attempts.
 	ordered := []string{}
@@ -118,6 +129,26 @@ func (e *Engine) StartupCandidatesWithHints() ([]string, int) {
 	for _, id := range fair {
 		if !math.IsInf(score(id), 1) {
 			hits++
+		}
+	}
+	if hits > 0 && hits < len(fair) {
+		first := e.nodes[fair[0]]
+		pick := -1
+		for i, id := range fair {
+			if math.IsInf(score(id), 1) {
+				if pick < 0 {
+					pick = i
+				}
+				if e.nodes[id].Airport != first.Airport && e.nodes[id].Relay != first.Relay {
+					pick = i
+					break
+				}
+			}
+		}
+		if pick > 1 {
+			id := fair[pick]
+			copy(fair[2:pick+1], fair[1:pick])
+			fair[1] = id
 		}
 	}
 	return fair, hits

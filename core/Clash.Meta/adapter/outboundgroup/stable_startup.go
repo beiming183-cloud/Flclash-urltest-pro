@@ -53,7 +53,11 @@ func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 	for id, value := range s.startupTried {
 		tried[id] = value
 	}
+	canConfirm := len(s.confirmationScheduled) < 2 && s.engine.PriorityAvailable(stability.RecoveryProbe, 2)
 	batch := 8 - len(s.quickScheduled) + len(s.confirmationScheduled)
+	if free := stableBackgroundDispatch.searchCapacity(s.groupID, active == 0); batch > free {
+		batch = free
+	}
 	// Reserve the scheduling turn atomically across the background worker and
 	// all waiting browser requests. Never scan the entire pool on each wakeup.
 	s.recoveryNext = now.Add(100 * time.Millisecond)
@@ -70,6 +74,9 @@ func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 		}
 	}
 	for _, id := range ids {
+		if !canConfirm {
+			break
+		}
 		if !tried[id] && !initial || s.pending(id) || containsStable(state.Active, id) || containsStable(state.Warm, id) {
 			continue
 		}
@@ -101,6 +108,9 @@ func (s *Stable) startupProbes(ctx context.Context, fault ...bool) {
 		ids = next
 	}
 	for _, id := range ids {
+		if batch <= 0 || stableBackgroundDispatch.searchCapacity(s.groupID, active == 0) == 0 {
+			break
+		}
 		if s.engine.FreshActiveCount() >= 3 {
 			return
 		}
@@ -188,6 +198,8 @@ func (s *Stable) notifyReadyLocked() {
 }
 
 func (s *Stable) awaitStartup(ctx, owner context.Context) error {
+	done := stableBackgroundDispatch.businessWait(s.groupID)
+	defer done()
 	for {
 		changed := s.readyChanged()
 		if len(s.engine.Attempts()) > 0 {

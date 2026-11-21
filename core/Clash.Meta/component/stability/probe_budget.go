@@ -53,6 +53,7 @@ type ProbeClass string
 const (
 	MaintenanceProbe ProbeClass = "maintenance"
 	RecoveryProbe    ProbeClass = "recovery"
+	StandbyProbe     ProbeClass = "first_standby"
 	SearchProbe      ProbeClass = "availability_search"
 )
 
@@ -76,6 +77,8 @@ func probeRate(class ProbeClass) (int, time.Duration) {
 		return 12, 3 * time.Second
 	case RecoveryProbe:
 		return 6, 5 * time.Second
+	case StandbyProbe:
+		return 2, 30 * time.Second
 	case SearchProbe:
 		// A finite, one-pass outage search. Network changes do not replenish it.
 		// Enough for two 185-route passes with two exit services; afterwards
@@ -135,7 +138,7 @@ func (e *Engine) PriorityAvailable(class ProbeClass, requests int) bool {
 
 func (e *Engine) probeBudgetsLocked() map[ProbeClass]ProbeBudgetState {
 	result := map[ProbeClass]ProbeBudgetState{}
-	for _, class := range []ProbeClass{MaintenanceProbe, RecoveryProbe, SearchProbe} {
+	for _, class := range []ProbeClass{MaintenanceProbe, RecoveryProbe, SearchProbe, StandbyProbe} {
 		b := e.probeBucketLocked(class)
 		capacity, interval := probeRate(class)
 		result[class] = ProbeBudgetState{Tokens: b.tokens, Capacity: capacity, RefillEveryMs: interval.Milliseconds(), HourRequests: b.used}

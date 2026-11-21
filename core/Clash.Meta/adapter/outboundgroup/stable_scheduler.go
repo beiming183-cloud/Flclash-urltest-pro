@@ -48,7 +48,7 @@ func competitionBudgetAvailable(state stability.Snapshot) bool {
 
 func refillBudgetAvailable(state stability.Snapshot) bool {
 	b, ok := state.ProbeBudgets[stability.RecoveryProbe]
-	return ok && b.Tokens >= 2
+	return ok && b.Tokens >= 2 || len(state.Active) == 1 && state.ProbeBudgets[stability.StandbyProbe].Tokens >= 2
 }
 
 func needsStableValidation(node stability.Stats, now time.Time) bool {
@@ -78,11 +78,13 @@ func schedulerDiagnostics(state stability.Snapshot, now time.Time) map[string]an
 func competitionCandidate(state stability.Snapshot, now time.Time, pending func(string) bool) string {
 	active := map[string]bool{}
 	airports := map[string]int{}
+	relays := map[string]bool{}
 	worstCost := 0.0
 	for _, id := range state.Active {
 		active[id] = true
 		for _, node := range state.Nodes {
 			if node.ID == id {
+				relays[node.Relay] = true
 				if node.Airport != "" {
 					airports[node.Airport]++
 				}
@@ -132,6 +134,9 @@ func competitionCandidate(state stability.Snapshot, now time.Time, pending func(
 				return untriedA
 			}
 			if untriedA {
+				if relays[a.Relay] != relays[b.Relay] {
+					return !relays[a.Relay]
+				}
 				reachableA, reachableB := airports[a.Airport] > 0, airports[b.Airport] > 0
 				if reachableA != reachableB {
 					return reachableA
@@ -167,6 +172,9 @@ func stableProbePolicy(state stability.Snapshot, id string, verify, quick, fault
 	warm := containsStable(state.Warm, id)
 	if len(state.Active) == 0 || (quick || fault) && !active && !warm {
 		priority = stability.RecoveryProbe
+		if len(state.Active) == 1 && quick && fault && state.ProbeBudgets[stability.RecoveryProbe].Tokens < 2 {
+			priority = stability.StandbyProbe
+		}
 	} else if fault || active || warm {
 		priority = stability.MaintenanceProbe
 	}
@@ -213,7 +221,7 @@ func (s *Stable) launchProbeMode(ctx context.Context, id string, verify, quick b
 		quickLimit, totalLimit = 8, 8
 	}
 	classFull := !quick && len(s.scheduled)-len(s.quickScheduled) >= 2 || quick && quickCount >= quickLimit
-	confirmation := quick && !search && priority == stability.RecoveryProbe
+	confirmation := quick && !search && (priority == stability.RecoveryProbe || priority == stability.StandbyProbe)
 	if confirmation {
 		classFull = len(s.confirmationScheduled) >= 2
 		totalLimit = len(s.scheduled) + 1
@@ -228,6 +236,19 @@ func (s *Stable) launchProbeMode(ctx context.Context, id string, verify, quick b
 			release()
 		}
 		return false
+	}
+	var finishSearch func()
+	if search {
+		probeCtx, cancel := context.WithCancel(ctx)
+		finish, admitted := stableBackgroundDispatch.trySearch(probeCtx, s.groupID, cancel, len(s.engine.Snapshot().Active) == 0)
+		if !admitted {
+			s.mu.Unlock()
+			cancel()
+			release()
+			return false
+		}
+		finishSearch = func() { cancel(); finish() }
+		ctx = context.WithValue(probeCtx, admittedSearchKey{}, true)
 	}
 	s.scheduled[id] = true
 	if confirmation {
@@ -246,10 +267,13 @@ func (s *Stable) launchProbeMode(ctx context.Context, id string, verify, quick b
 	s.wg.Add(1)
 	s.mu.Unlock()
 	go func() {
-		if release != nil {
-			defer release()
-		}
 		defer func() {
+			if finishSearch != nil {
+				finishSearch()
+			}
+			if release != nil {
+				release()
+			}
 			s.mu.Lock()
 			delete(s.scheduled, id)
 			delete(s.quickScheduled, id)
@@ -262,12 +286,8 @@ func (s *Stable) launchProbeMode(ctx context.Context, id string, verify, quick b
 			default:
 			}
 		}()
-		if len(s.engine.Snapshot().Active) == 0 {
-			reason := "startup_revalidation"
-			if quick {
-				reason = "startup_availability"
-			}
-			s.log("startup_probe", reason, id, false, 0)
+		if !quick && len(s.engine.Snapshot().Active) == 0 {
+			s.log("startup_probe", "startup_revalidation", id, false, 0)
 		}
 		sample, err := s.probeCandidate(ctx, id, verify, true, emergency, quick)
 		if quick {

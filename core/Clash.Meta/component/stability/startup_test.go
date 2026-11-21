@@ -37,7 +37,11 @@ func TestStartupHistorySurvivesRestartWithoutRestoringEligibility(t *testing.T) 
 	if len(restored.Attempts()) != 0 || restored.StartupCandidates()[0] != candidates[1].ID {
 		t.Fatal("hints became permissions or disappeared during network startup")
 	}
-	now = now.Add(25 * time.Hour)
+	now = now.Add(30 * time.Hour)
+	if ids, hits := restored.StartupCandidatesWithHints(); hits != 2 || ids[0] != candidates[1].ID || len(restored.Attempts()) != 0 {
+		t.Fatal("30-hour history must seed validation only", ids, hits)
+	}
+	now = now.Add(43 * time.Hour)
 	if restored.StartupCandidates()[0] != candidates[0].ID {
 		t.Fatal("expired history was treated as current")
 	}
@@ -57,5 +61,17 @@ func TestStartupDoesNotPrioritizeFailedOrUnverifiedHistory(t *testing.T) {
 	e.Invalidate()
 	if e.StartupCandidates()[0] != "a" {
 		t.Fatal("last failed route was prioritized")
+	}
+}
+
+func TestStartupMixesAgedWinnerWithUnseenAirport(t *testing.T) {
+	now := time.Now()
+	e, _ := New([]Candidate{{"old", "r1", "a"}, {"fresh", "r2", "a"}, {"unknown", "r3", "b"}, {"expired", "r4", "c"}}, func() time.Time { return now })
+	for id, age := range map[string]time.Duration{"old": 30 * time.Hour, "fresh": time.Hour, "expired": 73 * time.Hour} {
+		e.startup[id] = StartupHint{Node: id, Score: 10, VerifiedAt: now.Add(-age)}
+	}
+	ids, hits := e.StartupCandidatesWithHints()
+	if ids[0] != "fresh" || ids[1] != "unknown" || hits != 2 || len(e.Attempts()) != 0 {
+		t.Fatal(ids, hits, e.Attempts())
 	}
 }
